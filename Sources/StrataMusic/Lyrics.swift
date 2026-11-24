@@ -15,6 +15,17 @@ struct LyricLine: Identifiable, Hashable {
     var words: [LyricWord] = []
     var end: Double = 0
     var tagged = false        // the file gave a time for each word (rather than us spreading the words over the line)
+    var sungEnd: Double = 0   // when the last word has been sung (it can be after the next line has started, for ad-libs)
+}
+
+/// which lines are lit: normally one, two when an ad-lib is sung over the end of a line; or a quiet stretch (shown as dots) instead
+struct LyricFocus: Equatable {
+    var main = -1             // the line being sung (the older one when two overlap)
+    var extra = -1            // a second line sung at the same time
+    var gap = -1              // the quiet stretch we are in, named by the line that follows it (the line count = after the last line)
+    var target: Double { gap >= 0 ? Double(gap) - 0.5 : Double(max(main, 0)) }
+    var scrollID: Int { gap >= 0 ? 1000 + gap : max(main, 0) }
+    func lit(_ id: Int) -> Bool { id == main || id == extra }
 }
 
 /// hides the worst words when the "censor" option is on
@@ -225,13 +236,29 @@ final class LyricsStore: ObservableObject {
         }
         if out.isEmpty { return nil }
         out.sort { $0.0 < $1.0 }
+        func adlib(_ s: String) -> Bool { let t = s.trimmingCharacters(in: .whitespaces); return t.count > 2 && t.hasPrefix("(") && t.hasSuffix(")") }
         var result: [LyricLine] = []
         for (i, o) in out.enumerated() {
             let next = i + 1 < out.count ? out[i + 1].0 : o.0 + 5
+            // a line is sung right through the (bracketed) ad-libs that come after it, not cut off where they start
+            var limit = next
+            if !adlib(o.1) {
+                var k = i + 1
+                while k < out.count, adlib(out[k].1) { k += 1 }
+                limit = k < out.count ? out[k].0 : max(next, out[out.count - 1].0 + 3)
+            }
             var l = LyricLine(id: i, time: o.0, text: o.1)
             l.tagged = !o.2.isEmpty
             l.end = next
-            l.words = o.2.isEmpty ? estimate(o.1, from: o.0, to: next) : o.2
+            if o.2.isEmpty {
+                let e = estimateSpan(o.1, from: o.0, to: limit)
+                l.words = e.words
+                l.sungEnd = e.end
+            } else {
+                l.words = o.2
+                let last = o.2[o.2.count - 1].start
+                l.sungEnd = last + min(1.2, max(0.45, next - last))
+            }
             result.append(l)
         }
         return result
@@ -273,8 +300,10 @@ final class LyricsStore: ObservableObject {
 
     /// no word timings in the file: the words are spread over the part of the line that is actually sung. A line that runs into the next one
     /// fills the gap (less a breath); a line followed by a long pause is sung at a natural pace and then stops.
-    static func estimate(_ text: String, from a: Double, to b: Double) -> [LyricWord] {
-        guard !text.isEmpty else { return [] }
+    static func estimate(_ text: String, from a: Double, to b: Double) -> [LyricWord] { estimateSpan(text, from: a, to: b).words }
+
+    static func estimateSpan(_ text: String, from a: Double, to b: Double) -> (words: [LyricWord], end: Double) {
+        guard !text.isEmpty else { return ([], a) }
         var pieces: [String]
         if text.contains(" ") {
             let ws = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
@@ -294,6 +323,41 @@ final class LyricsStore: ObservableObject {
             out.append(LyricWord(text: p, start: a + span * acc / total))
             acc += weights[i]
         }
+        return (out, a + span)
+    }
+
+    // MARK: which lines are lit, and the quiet stretches
+
+    /// the stretches with nothing sung that are long enough to show dots for: key = the line that follows (the line count = after the last line)
+    func gaps(duration: Double) -> [Int: ClosedRange<Double>] {
+        var out: [Int: ClosedRange<Double>] = [:]
+        guard let first = lines.first, let last = lines.last else { return out }
+        if first.time >= 4, !first.text.isEmpty { out[0] = 0...first.time }
+        if lines.count > 1 {
+            for i in 0..<(lines.count - 1) where !lines[i].text.isEmpty && !lines[i + 1].text.isEmpty {
+                let a = lines[i].sungEnd, b = lines[i + 1].time
+                if b - a >= 7 { out[i + 1] = (a + 0.4)...b }
+            }
+        }
+        if !last.text.isEmpty, duration - last.sungEnd >= 8 { out[lines.count] = (last.sungEnd + 0.4)...duration }
         return out
+    }
+
+    func focus(at position: Double, duration: Double) -> LyricFocus {
+        var f = LyricFocus()
+        guard !lines.isEmpty else { return f }
+        let t = position + 0.2 - offset
+        let gs = gaps(duration: duration)
+        let i = index(at: position)
+        if i < 0 { if gs[0] != nil { f.gap = 0 }; return f }
+        // an earlier line that is still being sung while this one has started (an ad-lib over its end)
+        var j = i - 1
+        while j >= 0 && j >= i - 2 {
+            if lines[j].sungEnd > t && lines[j].sungEnd > lines[i].time + 0.3 { f.main = j; f.extra = i; return f }
+            j -= 1
+        }
+        if t > lines[i].sungEnd, let g = gs[i + 1], g.contains(t) { f.gap = i + 1; return f }
+        f.main = i
+        return f
     }
 }

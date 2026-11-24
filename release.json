@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.7.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Lyrics: at the start and end of a song, and in long instrumental breaks, three dots appear and fill up one by one as the next line gets closer.",
+    "Two lines can now be lit at once, so an ad-lib sung over the end of a line no longer cuts that line short. Bracketed ad-libs like (yeah) no longer make the line before them rush; with precise word timing the overlap follows the voice exactly."
+   ]
+  },
+  {
    "version": "2.6.1",
    "name": "The Macster Update",
    "date": "2026-11-24",

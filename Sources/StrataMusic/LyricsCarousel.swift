@@ -69,7 +69,7 @@ struct LiveLine: View {
             let t = clock.live + 0.05 - offset
             FlowLayout(lineSpacing: size * 0.06) {
                 ForEach(Array(line.words.enumerated()), id: \.offset) { i, w in
-                    let next = i + 1 < line.words.count ? line.words[i + 1].start : max(w.start + 0.4, line.end - 0.1)
+                    let next = i + 1 < line.words.count ? line.words[i + 1].start : (line.sungEnd > w.start + 0.3 ? line.sungEnd : max(w.start + 0.4, line.end - 0.1))
                     // a word held through a pause still finishes quickly
                     let dur = max(0.08, min(next - w.start, 1.6))
                     let p = max(0, min(1, (t - w.start) / dur))
@@ -84,17 +84,42 @@ struct LiveLine: View {
 /// lines sit on a gentle curve like a wheel: the further a line is from the one being sung, the further it slides left, the smaller and dimmer it gets,
 /// and it turns away a little. [focus] is an animated copy of the current line's number, so changing line moves them all together, with a bounce.
 struct CarouselEffect: ViewModifier, Animatable {
-    var index: Int
+    var index: Double
     var focus: Double
+    var lit = false           // a line being sung is drawn as if it were the focus, even when it isn't the one the wheel is turned to
     var animatableData: Double { get { focus } set { focus = newValue } }
 
     func body(content: Content) -> some View {
-        let d = Double(index) - focus
+        let d = lit ? 0 : index - focus
         let a = min(abs(d), 4)
         return content
             .scaleEffect(1 - a * 0.03, anchor: .leading)
             .rotation3DEffect(.degrees(max(-3, min(3, d)) * -3), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.5)
             .offset(x: -(1 - cos(a * 0.5)) * 64)
             .opacity(0.16 + 0.84 * exp(-a * 0.9))
+    }
+}
+
+/// "• • •" for a stretch with nothing sung (the start and end of a song, a long break): the dots fill one by one as the next line gets closer
+struct GapDots: View {
+    let range: ClosedRange<Double>          // lyric time, from the end of the last line to the start of the next
+    @ObservedObject var clock: Clock
+    let offset: Double
+    let live: Bool
+    let playing: Bool
+    @ObservedObject private var act = AppActive.shared
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !live || !playing || !act.active)) { _ in
+            let t = clock.live + 0.05 - offset
+            let p = live ? max(0, min(1, (t - range.lowerBound) / max(0.5, range.upperBound - range.lowerBound))) : (t >= range.upperBound ? 1 : 0)
+            HStack(spacing: 14) {
+                ForEach(0..<3, id: \.self) { k in
+                    let f = max(0, min(1, p * 3 - Double(k)))
+                    Circle().fill(Color.white.opacity(0.28 + 0.72 * f)).frame(width: 20, height: 20).scaleEffect(0.8 + 0.3 * f)
+                }
+            }
+            .padding(.vertical, 12)
+        }
     }
 }
