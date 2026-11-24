@@ -33,18 +33,26 @@ final class Updater: ObservableObject {
         return false
     }
 
+    /// the newest release by version number. GitHub lists releases by tag name as text (2.9.2 comes before 2.10.0), so the first one in the list is not the newest.
+    static func latest(of list: [Release]) -> Release? {
+        list.filter { $0.tagName.hasPrefix("mac-v") }.reduce(nil as Release?) { best, r in
+            guard let b = best else { return r }
+            return newer(r.version, than: b.version) ? r : b
+        }
+    }
+
     /// [silent]: the automatic check. It only speaks up when there is something new that the person hasn't already said "nah" to.
     func check(silent: Bool = false) async {
         guard !busy else { return }
         busy = true; failed = false; defer { busy = false }
         if !silent { status = "Checking…" }
-        guard let u = URL(string: "https://api.github.com/repos/\(Self.repo)/releases?per_page=10") else { return }
+        guard let u = URL(string: "https://api.github.com/repos/\(Self.repo)/releases?per_page=100") else { return }
         var req = URLRequest(url: u); req.setValue("Strata Music for Mac", forHTTPHeaderField: "User-Agent"); req.timeoutInterval = 15
         do {
             let (d, _) = try await URLSession.shared.data(for: req)
             let dec = JSONDecoder(); dec.keyDecodingStrategy = .convertFromSnakeCase
-            let list = try dec.decode([Release].self, from: d).filter { $0.tagName.hasPrefix("mac-v") }
-            if let r = list.first, Self.newer(r.version, than: Self.current) {
+            let list = try dec.decode([Release].self, from: d)
+            if let r = Self.latest(of: list), Self.newer(r.version, than: Self.current) {
                 available = r; status = "Version \(r.version) is available"
                 if !silent || UserDefaults.standard.string(forKey: "skipVersion") != r.version { showPrompt = true }
             } else {

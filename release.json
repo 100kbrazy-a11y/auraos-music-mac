@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.0.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Fixes updates not being found: GitHub lists versions alphabetically, so the update check kept seeing 2.9.2 as the newest and never noticed 2.10. It now picks the newest by number. This is why this release is 3.0.0: it is the first one older copies of Strata can see.",
+    "Includes everything from 2.10: the lyrics menu is now a glass button at the top right (opposite the close button), and \"Export a piece of this song…\" saves a chosen part of a song with its lyrics and timing report as one zip in Downloads."
+   ]
+  },
+  {
    "version": "2.10.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

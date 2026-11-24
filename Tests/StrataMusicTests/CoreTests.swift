@@ -52,6 +52,14 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(Updater.newer("1.2.1", than: "1.2"))
     }
 
+    func testLatestReleaseIsByNumber() {
+        // GitHub lists tags as text, so 2.9.2 comes before 2.10.0 in what it sends
+        func rel(_ tag: String) -> Updater.Release { Updater.Release(tagName: tag, name: nil, body: nil, htmlUrl: "", assets: []) }
+        let list = [rel("mac-v2.9.2"), rel("v9.9.9"), rel("mac-v2.9.0"), rel("mac-v2.10.0"), rel("mac-v2.1.0")]
+        XCTAssertEqual(Updater.latest(of: list)?.version, "2.10.0")
+        XCTAssertNil(Updater.latest(of: [rel("v1.0.0")]))
+    }
+
     func testSeasons() {
         var c = DateComponents(); c.year = 2026; c.day = 15
         c.month = 10; XCTAssertEqual(Season.forDate(Calendar.current.date(from: c)!), .autumn)
