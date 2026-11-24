@@ -2,6 +2,14 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.6.1",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Precise word timing is much faster: it uses all the fast cores, listens to several pieces of the song at once, skips the parts with no lyrics, keeps the model loaded between songs and remembers what it heard, so syncing a song again is instant."
+   ]
+  },
+  {
    "version": "2.6.0",
    "name": "The Macster Update",
    "date": "2026-11-24",
