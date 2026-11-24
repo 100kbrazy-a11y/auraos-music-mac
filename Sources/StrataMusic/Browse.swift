@@ -33,6 +33,15 @@ struct SongTable: View {
         return SortKey(sig: h.finalize(), search: search, order: order.map { "\(String(describing: $0.keyPath))\($0.order)" }.joined(separator: ","))
     }
 
+    /// one song drags out as its file; a selection of several drags out as a music pack
+    private func dragProvider(_ s: Song, _ list: [Song]) -> NSItemProvider {
+        if selection.contains(s.id), selection.count > 1 {
+            let picked = list.filter { selection.contains($0.id) }
+            if picked.count > 1 { return SongDrag.provider(picked, name: "Strata Pack") }
+        }
+        return SongDrag.provider([s], name: s.title)
+    }
+
     private static func filtered(_ songs: [Song], _ search: String) -> [Song] {
         let q = search.trimmingCharacters(in: .whitespaces)
         return q.isEmpty ? songs : songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
@@ -48,6 +57,8 @@ struct SongTable: View {
                     if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
                     if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
                 }
+                .contentShape(Rectangle())
+                .onDrag { dragProvider(s, list) }
             }
             TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary) }
             TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary) }
@@ -144,6 +155,7 @@ struct AlbumCard: View {
             }
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .onDrag { SongDrag.provider(a.songs, name: a.title) }
     }
 }
 

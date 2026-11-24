@@ -88,7 +88,18 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: searchFocus)
-        .dropDestination(for: URL.self) { urls, _ in lib.importURLs(urls, remember: true); return true } isTargeted: { dropping = $0 }
+        .onDrop(of: [.fileURL], isTargeted: $dropping) { providers in
+            // songs dragged out of this app and back in are not new files, so they're left alone
+            let outside = providers.filter { !SongDrag.isOurs($0) }
+            guard !outside.isEmpty else { return false }
+            for p in outside {
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url = url else { return }
+                    Task { @MainActor in lib.importURLs([url], remember: true) }
+                }
+            }
+            return true
+        }
         .overlay { if dropping { RoundedRectangle(cornerRadius: 14).strokeBorder(player.accent, lineWidth: 3).padding(6).allowsHitTesting(false) } }
         .background(Color(red: 0.07, green: 0.07, blue: 0.08))
         .background(GeometryReader { g in
@@ -366,6 +377,7 @@ struct SidebarView: View {
     @EnvironmentObject var updater: Updater
     @ObservedObject var dl = Downloads.shared
     @State private var renaming: Playlist?
+    @State private var dropOn: String?
     @State private var newName = ""
     @State private var editingSmart: SmartPlaylist?
 
@@ -415,6 +427,16 @@ struct SidebarView: View {
             Section("Playlists") {
                 ForEach(lib.playlists) { p in
                     Label(p.name, systemImage: "music.note.list").tag(Nav.playlist(p.id))
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(dropOn == p.id ? Color.accentColor.opacity(0.35) : Color.clear))
+                        .onDrag { SongDrag.provider(lib.songs(in: p), name: p.name) }
+                        .onDrop(of: [SongDrag.type], isTargeted: Binding(get: { dropOn == p.id }, set: { on in if on { dropOn = p.id } else if dropOn == p.id { dropOn = nil } })) { providers in
+                            SongDrag.ids(from: providers) { ids in
+                                lib.add(ids, to: p.id)
+                                lib.flash("Added \(ids.count) \(ids.count == 1 ? "song" : "songs") to \(p.name)")
+                            }
+                            return true
+                        }
                         .contextMenu {
                             Button("Rename…") { newName = p.name; renaming = p }
                             Button("Duplicate") { lib.duplicate(p) }
@@ -423,6 +445,13 @@ struct SidebarView: View {
                         }
                 }
                 Button { lib.newPlaylist("New Playlist") } label: { Label("New Playlist", systemImage: "plus") }.buttonStyle(.plain).foregroundStyle(.secondary)
+                    .onDrop(of: [SongDrag.type], isTargeted: nil) { providers in
+                        SongDrag.ids(from: providers) { ids in
+                            lib.newPlaylist("New Playlist", with: ids)
+                            lib.flash("Made a new playlist with \(ids.count) \(ids.count == 1 ? "song" : "songs")")
+                        }
+                        return true
+                    }
                 Button { lib.importM3U() } label: { Label("Import Playlist…", systemImage: "square.and.arrow.down") }.buttonStyle(.plain).foregroundStyle(.secondary)
             }
         }

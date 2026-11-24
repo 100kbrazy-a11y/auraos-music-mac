@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.2.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Drag songs onto a playlist in the sidebar to add them; drop them on New Playlist to start one",
+    "Drag a single song out of the app and it is the real file: drop it on the desktop, a folder, or a web page's upload box",
+    "Drag several songs, an album or a playlist out and it becomes a music pack: when you let go, a window asks for the title and the audio format, then makes one .zip with the songs and a pack.json",
+    "Dropping songs that came from the app back onto its own window no longer re-imports them"
+   ]
+  },
+  {
    "version": "2.1.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

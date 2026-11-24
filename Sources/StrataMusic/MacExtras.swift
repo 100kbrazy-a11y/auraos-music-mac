@@ -219,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let crashed = CrashGuard.begin()
         HangWatch.start()
+        MusicPack.cleanup()
         if crashed { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Diagnostics.askAfterCrash() } }
         songWatcher = Player.shared.$current.dropFirst().removeDuplicates { $0?.id == $1?.id }.sink { song in
             Task { @MainActor in Notifier.songChanged(song) }
