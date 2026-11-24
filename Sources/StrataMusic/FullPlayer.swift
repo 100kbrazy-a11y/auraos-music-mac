@@ -159,7 +159,13 @@ struct ExtraControls: View {
 
 struct LyricsPage: View {
     @EnvironmentObject var player: Player
-    @StateObject private var store = LyricsStore()
+    @ObservedObject var store = LyricsStore.shared
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage("lyricsWords") private var wordMode = true
+    @AppStorage("censorLyrics") private var censor = false
+    @AppStorage("lyricsRomanize") private var romanize = false
+    @AppStorage("lyricsTranslate") private var translate = false
+    @State private var sharing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -171,16 +177,32 @@ struct LyricsPage: View {
                         Text(s.shownArtist).font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
                     }
                     Spacer()
+                    if store.offset != 0 { Text(String(format: "%+.2f s", store.offset)).font(.system(size: 11, design: .rounded)).foregroundStyle(.white.opacity(0.6)) }
+                    if store.translating { ProgressView().controlSize(.small) }
+                    menu(s)
                 }
                 .padding(.horizontal, 60).padding(.bottom, 10)
             }
             ZStack {
-                if store.synced { SyncedLyrics(store: store, clock: player.clock) }
+                if store.markedNone {
+                    VStack(spacing: 10) {
+                        Image(systemName: "text.quote.slash").font(.system(size: 36))
+                        Text("You marked this song as having no lyrics").font(.title3.weight(.semibold))
+                        if let s = player.current { Button("Undo") { Task { await store.toggleNone(s) } }.buttonStyle(.bordered) }
+                    }.foregroundStyle(.white.opacity(0.55))
+                }
+                else if store.synced { SyncedLyrics(store: store, clock: player.clock) }
                 else if !store.plain.isEmpty {
-                    ScrollView { Text(store.plain).font(.system(size: 22, weight: .semibold)).multilineTextAlignment(.leading).frame(maxWidth: 640, alignment: .leading).padding(40) }
+                    ScrollView { Text(LyricsFilter.clean(store.plain)).font(.system(size: 22, weight: .semibold)).multilineTextAlignment(.leading).frame(maxWidth: 640, alignment: .leading).padding(40) }
                 }
                 else if store.loading { ProgressView().controlSize(.large) }
-                else { VStack(spacing: 8) { Image(systemName: "text.quote").font(.system(size: 36)); Text("No lyrics found for this song").font(.title3.weight(.semibold)) }.foregroundStyle(.white.opacity(0.55)) }
+                else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "text.quote").font(.system(size: 36))
+                        Text("No lyrics found for this song").font(.title3.weight(.semibold))
+                        if let s = player.current { Button("Import a lyrics file…") { Task { await store.importFile(for: s) } }.buttonStyle(.bordered) }
+                    }.foregroundStyle(.white.opacity(0.55))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let s = player.current {
@@ -192,7 +214,34 @@ struct LyricsPage: View {
                 .frame(maxWidth: 560).padding(.horizontal, 30)
             }
         }
-        .task(id: player.current?.id) { if let s = player.current { await store.load(for: s) } }
+        .task(id: player.current?.id) { if let s = player.current { await store.ensure(s) } }
+        .lyricsTranslation(store: store, on: translate)
+        .sheet(isPresented: $sharing) {
+            if let s = player.current { LyricShareSheet(song: s, lines: store.lines, plain: store.plain) }
+        }
+    }
+
+    private func menu(_ s: Song) -> some View {
+        Menu {
+            Button("Show lyrics earlier  (−0.25 s)") { store.nudge(-0.25, song: s) }
+            Button("Show lyrics later  (+0.25 s)") { store.nudge(0.25, song: s) }
+            Button("Reset sync") { store.setOffset(0, song: s) }.disabled(store.offset == 0)
+            Divider()
+            Toggle("Word by word", isOn: $wordMode)
+            Toggle("Hide bad words", isOn: $censor)
+            Toggle("Show in Latin letters", isOn: $romanize)
+            if #available(macOS 15.0, *) { Toggle("Translate", isOn: $translate) }
+            Divider()
+            Button("Import a lyrics file…") { Task { await store.importFile(for: s) } }
+            if store.hasOwnFile { Button("Remove my lyrics file") { Task { await store.removeOwnFile(for: s) } } }
+            Button(store.markedNone ? "This song has lyrics after all" : "This song has no lyrics") { Task { await store.toggleNone(s) } }
+            Divider()
+            Button("Share lyrics…") { sharing = true }.disabled(store.lines.isEmpty)
+            Button("Desktop lyrics") { openWindow(id: "desktoplyrics") }
+        } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 18)).foregroundStyle(.white.opacity(0.7))
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 30)
     }
 }
 
@@ -200,32 +249,32 @@ struct SyncedLyrics: View {
     @ObservedObject var store: LyricsStore
     @ObservedObject var clock: Clock
     @EnvironmentObject var player: Player
-
-    private var currentIndex: Int {
-        var lo = 0, hi = store.lines.count - 1, ans = -1
-        let t = clock.position + 0.2
-        while lo <= hi { let mid = (lo + hi) / 2; if store.lines[mid].time <= t { ans = mid; lo = mid + 1 } else { hi = mid - 1 } }
-        return ans
-    }
+    @AppStorage("lyricsWords") private var wordMode = true
+    @AppStorage("lyricsRomanize") private var romanize = false
+    @AppStorage("lyricsTranslate") private var translate = false
 
     var body: some View {
-        let cur = currentIndex
+        let cur = store.index(at: clock.position)
+        let t = clock.position + 0.2 - store.offset
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     Color.clear.frame(height: 120)
                     ForEach(store.lines) { l in
                         let on = l.id == cur
-                        Text(l.text.isEmpty ? "♪" : l.text)
-                            .font(.system(size: 34, weight: .heavy))
-                            .foregroundStyle(Color.white.opacity(on ? 1 : (l.id < cur ? 0.28 : 0.4)))
-                            .scaleEffect(on ? 1 : 0.94, anchor: .leading)
-                            .blur(radius: on ? 0 : 0.6)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: on)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture { player.seek(to: l.time) }
-                            .id(l.id)
+                        VStack(alignment: .leading, spacing: 4) {
+                            LyricLineText(line: l, t: t, active: on, words: wordMode).font(.system(size: 34, weight: .heavy))
+                            if romanize, let r = LyricsFilter.romanize(l.text) { Text(LyricsFilter.clean(r)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
+                            if translate, let tr = store.translated[l.id] { Text(LyricsFilter.clean(tr)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
+                        }
+                        .foregroundStyle(Color.white.opacity(on ? 1 : (l.id < cur ? 0.28 : 0.4)))
+                        .scaleEffect(on ? 1 : 0.94, anchor: .leading)
+                        .blur(radius: on ? 0 : 0.6)
+                        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: on)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { player.seek(to: l.time + store.offset) }
+                        .id(l.id)
                     }
                     Color.clear.frame(height: 220)
                 }

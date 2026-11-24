@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.7.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Lyrics light up word by word (uses word timings when a file has them, otherwise they're spread across the line)",
+    "Fix the sync for one song (earlier or later, saved), import your own .lrc or plain lyrics, or mark a song as having no lyrics",
+    "Hide bad words, show non-Latin lyrics in Latin letters, and translate lyrics on macOS 15 and later",
+    "Share lyrics: pick up to six lines and save or copy a picture in the cover's colours",
+    "The current lyric shows in the menu bar player, and Desktop Lyrics (⌥⌘D) floats a strip over your other windows"
+   ]
+  },
+  {
    "version": "1.6.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

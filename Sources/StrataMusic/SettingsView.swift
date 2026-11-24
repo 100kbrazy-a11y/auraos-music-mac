@@ -23,6 +23,9 @@ struct GeneralSettings: View {
     @AppStorage("menuBar") private var menuBar = true
     @AppStorage("miniOnTop") private var miniOnTop = true
     @AppStorage("notifySong") private var notifySong = false
+    @AppStorage("menuLyrics") private var menuLyrics = true
+    @AppStorage("censorLyrics") private var censorLyrics = false
+    @AppStorage("lyricsWords") private var lyricsWords = true
 
     var body: some View {
         Form {
@@ -52,6 +55,9 @@ struct GeneralSettings: View {
                 Toggle("Show YouTube results while I type in search", isOn: $liveYt)
                 Toggle("Look for new releases from my artists (weekly)", isOn: $homeReleases)
                 Toggle("Show the player in the menu bar", isOn: $menuBar)
+                Toggle("Show the current lyric in the menu bar player", isOn: $menuLyrics)
+                Toggle("Light up lyrics word by word", isOn: $lyricsWords)
+                Toggle("Hide bad words in lyrics", isOn: $censorLyrics)
                 Toggle("Keep the mini player above other windows", isOn: $miniOnTop)
                 Toggle("Show a notification when the song changes (while the app is in the background)", isOn: $notifySong)
                     .onChange(of: notifySong) { on in if on { Notifier.authorize() } }

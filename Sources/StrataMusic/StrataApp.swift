@@ -59,6 +59,7 @@ struct StrataApp: App {
                 Button("Up Next") { NotificationCenter.default.post(name: .toggleQueue, object: nil) }.keyboardShortcut("u", modifiers: .command)
                 Button("Show Current Song's Album") { NotificationCenter.default.post(name: .jumpCurrent, object: nil) }.keyboardShortcut("j", modifiers: .command)
                 Button("Mini Player") { Presence.toggleMini { openWindow(id: "mini") } }.keyboardShortcut("m", modifiers: [.command, .option])
+                Button("Desktop Lyrics") { Presence.toggleDesktopLyrics { openWindow(id: "desktoplyrics") } }.keyboardShortcut("d", modifiers: [.command, .option])
                 Divider()
                 Button(player.current.map { lib.isFav($0) } == true ? "Remove from Favorites" : "Add to Favorites") { if let s = player.current { lib.toggleFav(s) } }.keyboardShortcut("l", modifiers: .command)
                 Button("Start Radio from This Song") { if let s = player.current { Radio.shared.start(from: s) } }
@@ -75,6 +76,11 @@ struct StrataApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 340, height: 78)
+        Window("Desktop Lyrics", id: "desktoplyrics") {
+            DesktopLyricsView().environmentObject(player)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 560, height: 110)
         Window("Keyboard Shortcuts", id: "shortcuts") {
             ShortcutsView()
         }

@@ -25,6 +25,12 @@ enum Presence {
         } else { open() }
     }
 
+    static var desktopWindow: NSWindow? { NSApp.windows.first { $0.identifier?.rawValue == "StrataDesktopLyrics" } }
+
+    static func toggleDesktopLyrics(open: () -> Void) {
+        if let w = desktopWindow, w.isVisible { w.close() } else { open() }
+    }
+
     static func toggleMini(open: () -> Void) {
         if let w = miniWindow, w.isVisible { w.close() } else { open() }
     }
@@ -36,6 +42,7 @@ struct MenuBarPlayer: View {
     @EnvironmentObject var player: Player
     @EnvironmentObject var lib: Library
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("menuLyrics") private var menuLyrics = true
 
     var body: some View {
         VStack(spacing: 12) {
@@ -52,6 +59,7 @@ struct MenuBarPlayer: View {
                 }
                 SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }
                 TransportButtons().frame(maxWidth: .infinity)
+                if menuLyrics { MenuBarLine(clock: player.clock, song: s) }
                 let upcoming = Array(player.queue.enumerated()).filter { $0.offset > player.index }.prefix(4)
                 if !upcoming.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
@@ -169,7 +177,7 @@ struct ShortcutsView: View {
     private let groups: [(String, [(String, String)])] = [
         ("Playback", [("Play / Pause", "Space"), ("Next / Previous", "⌘→  ⌘←"), ("Skip 10 seconds", "⌥⌘→  ⌥⌘←"), ("Volume", "⌘↑  ⌘↓"),
                       ("Shuffle", "⌥⌘S"), ("Repeat", "⌥⌘R"), ("Like the current song", "⌘L")]),
-        ("Windows", [("Show the player", "⇧⌘L"), ("Lyrics", "⌥⌘L"), ("Up Next", "⌘U"), ("Mini player", "⌥⌘M"), ("Show the current song's album", "⌘J"), ("Close the player", "Esc")]),
+        ("Windows", [("Show the player", "⇧⌘L"), ("Lyrics", "⌥⌘L"), ("Up Next", "⌘U"), ("Mini player", "⌥⌘M"), ("Desktop lyrics", "⌥⌘D"), ("Show the current song's album", "⌘J"), ("Close the player", "Esc")]),
         ("Library", [("Search", "⌘F"), ("Add music", "⌘O"), ("Move through a list", "↑  ↓"), ("Play the selected song", "Return"), ("Jump to a title", "Start typing")]),
         ("Search drop-down", [("Move through results", "↑  ↓"), ("Open the highlighted result", "Return"), ("Search YouTube for what you typed", "Return, with nothing highlighted"), ("Close", "Esc")]),
     ]
