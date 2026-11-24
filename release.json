@@ -1,0 +1,19 @@
+{
+ "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
+ "releases": [
+  {
+   "version": "1.0.0",
+   "name": "The Thanksgiving Update",
+   "date": "2026-11-23",
+   "notes": [
+    "Strata Music for Mac: the Android app's look mixed with Apple Music's layout. Liquid Glass on macOS 26 and later, blurred glass on earlier versions",
+    "Songs, Albums, Artists, Favorites and Playlists; add folders or drop songs on the window",
+    "A full-screen player with three pages (Lyrics, Current Song, Artist) and a glass pill to switch them, with falling brown, yellow and red leaves",
+    "Synced lyrics from LRCLIB, or an .lrc file next to the song",
+    "Discord Rich Presence with the album cover, over the Discord app on your Mac (no sign-in)",
+    "Export a song as M4A, ALAC, FLAC, WAV or AIFF; media keys and Control Centre work",
+    "Update check against GitHub releases"
+   ]
+  }
+ ]
+}
