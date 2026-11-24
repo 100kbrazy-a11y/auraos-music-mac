@@ -7,6 +7,7 @@ struct FullPlayerView: View {
     var close: () -> Void
     @State private var page = UserDefaults.standard.object(forKey: "playerStart") as? Int ?? 1
     @State private var hoverClose = false
+    @State private var isFull = false
 
     var body: some View {
         ZStack {
@@ -19,13 +20,16 @@ struct FullPlayerView: View {
             }
             .id(page)
             .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            .padding(.top, 96).padding(.bottom, 92)
+            // the Current Song page centres itself in the whole window; the others keep clear of the buttons
+            .padding(.top, page == 1 ? 0 : (isFull ? 100 : 124)).padding(.bottom, page == 1 ? 0 : 92)
 
             VStack {
                 Spacer()
                 SpectrumView(height: 110).opacity(page == 0 ? 0.25 : 0.55).padding(.horizontal, 40).padding(.bottom, 80)
             }.allowsHitTesting(false)
 
+            // drag the top of the player down to close it
+            VStack { Color.clear.frame(height: 36).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { if $0.translation.height > 100 { close() } }); Spacer() }
             VStack {
                 HStack {
                     Button { close() } label: {
@@ -37,16 +41,19 @@ struct FullPlayerView: View {
                     .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hoverClose = h } }
                     Spacer()
                 }
-                // below the window's title-bar strip (that strip drags the window and swallows clicks) and clear of the traffic lights
-                .padding(.leading, 20).padding(.trailing, 22).padding(.top, 40)
+                // full screen has no title bar, so the button sits as far from the top as from the side; in a window it stays below the
+                // title-bar strip (that strip drags the window and swallows clicks)
+                .padding(.leading, 20).padding(.trailing, 22).padding(.top, isFull ? 20 : 44)
                 Spacer()
                 TabPill(page: $page)
             }
-            // drag the top of the player down to close it
-            VStack { Color.clear.frame(height: 36).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { if $0.translation.height > 100 { close() } }); Spacer() }
             // Esc closes the player
             Button("Close", action: close).keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
+        .ignoresSafeArea()
+        .onAppear { isFull = NSApp.keyWindow?.styleMask.contains(.fullScreen) ?? false }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in isFull = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in isFull = false }
         .onExitCommand(perform: close)
         .onReceive(NotificationCenter.default.publisher(for: .playerPage)) { n in
             if let p = n.object as? Int { withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = p } }
@@ -112,42 +119,49 @@ struct SongPage: View {
     var body: some View {
         if let s = player.current {
             GeometryReader { g in
-                let side = max(220, min(g.size.height - 30, g.size.width * 0.42, 560))
-                HStack(spacing: 60) {
-                    CoverView(song: s, size: side * CGFloat(coverScale), radius: coverShape == "circle" ? side * CGFloat(coverScale) / 2 : (coverShape == "square" ? 4 : 24))
+                // the cover sits on the left, centred top to bottom in the window; the controls fill the rest
+                let side = max(200, min(g.size.height - 240, g.size.width * 0.44, 620))
+                let cover = side * CGFloat(coverScale)
+                HStack(spacing: 0) {
+                    CoverView(song: s, size: cover, radius: coverShape == "circle" ? cover / 2 : (coverShape == "square" ? 4 : 24))
                         .shadow(color: .black.opacity(coverShadow ? 0.5 : 0), radius: 40, y: 22)
                         .scaleEffect(player.isPlaying ? 1 : 0.93)
                         .animation(.spring(response: 0.5, dampingFraction: 0.75), value: player.isPlaying)
-                    VStack(alignment: .leading, spacing: 18) {
-                        Spacer(minLength: 0)
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(s.title).font(.system(size: 30, weight: .heavy)).lineLimit(2)
-                                Text(s.shownArtist).font(.system(size: 20, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
-                                if !s.album.isEmpty { Text(s.album).font(.system(size: 14)).foregroundStyle(.white.opacity(0.5)).lineLimit(1) }
-                            }
-                            Spacer()
-                            Button { lib.toggleFav(s) } label: {
-                                Image(systemName: lib.isFav(s) ? "heart.fill" : "heart").font(.system(size: 20)).foregroundStyle(lib.isFav(s) ? player.accent : Color.white)
-                            }.buttonStyle(.plain)
-                        }
-                        VStack(spacing: 4) {
-                            SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }
-                            TimeLabels(clock: player.clock, duration: s.duration)
-                        }
-                        HStack {
-                            Spacer()
-                            TransportButtons(big: true)
-                            Spacer()
-                        }
-                        ExtraControls()
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: 440)
+                        .frame(width: side, height: side)
+                        .padding(.leading, 64)
+                    info(s)
+                        .frame(maxWidth: 480)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 48)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 40)
+                .frame(width: g.size.width, height: g.size.height)
             }
+        }
+    }
+
+    private func info(_ s: Song) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(s.title).font(.system(size: 30, weight: .heavy)).lineLimit(2)
+                    Text(s.shownArtist).font(.system(size: 20, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    if !s.album.isEmpty { Text(s.album).font(.system(size: 14)).foregroundStyle(.white.opacity(0.5)).lineLimit(1) }
+                }
+                Spacer()
+                Button { lib.toggleFav(s) } label: {
+                    Image(systemName: lib.isFav(s) ? "heart.fill" : "heart").font(.system(size: 20)).foregroundStyle(lib.isFav(s) ? player.accent : Color.white)
+                }.buttonStyle(.plain)
+            }
+            VStack(spacing: 4) {
+                SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }
+                TimeLabels(clock: player.clock, duration: s.duration)
+            }
+            HStack {
+                Spacer()
+                TransportButtons(big: true)
+                Spacer()
+            }
+            ExtraControls()
         }
     }
 }

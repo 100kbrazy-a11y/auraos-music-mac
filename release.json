@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.5.1",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Full-screen player: the album cover now sits on the left, centred top to bottom in the window, with the song info and controls beside it.",
+    "The close button sits the same distance from the top as from the left edge in full screen (it still clears the title bar in a window)."
+   ]
+  },
+  {
    "version": "2.5.0",
    "name": "The Macster Update",
    "date": "2026-11-24",
