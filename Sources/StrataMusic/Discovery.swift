@@ -234,6 +234,7 @@ final class ArtistProfiles: ObservableObject {
 
 // MARK: - the Home page
 
+@MainActor
 enum Home {
     static func plays(_ a: ArtistInfo) -> Int { a.songs.reduce(0) { $0 + ($1.plays ?? 0) } }
     static func topArtists(_ lib: Library) -> [ArtistInfo] {
