@@ -172,7 +172,7 @@ final class SaveBox: @unchecked Sendable {
 
 @MainActor
 final class Library: ObservableObject {
-    @Published private(set) var songs: [Song] = []
+    @Published var songs: [Song] = []
     @Published private(set) var albums: [AlbumInfo] = []
     @Published private(set) var artists: [ArtistInfo] = []
     @Published var favorites: Set<String> = []
