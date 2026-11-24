@@ -14,6 +14,7 @@ struct LyricLine: Identifiable, Hashable {
     let text: String
     var words: [LyricWord] = []
     var end: Double = 0
+    var tagged = false        // the file gave a time for each word (rather than us spreading the words over the line)
 }
 
 /// hides the worst words when the "censor" option is on
@@ -56,6 +57,7 @@ final class LyricsStore: ObservableObject {
     @Published var offset = 0.0                 // seconds; + shows each line later
     @Published var markedNone = false
     @Published var hasOwnFile = false
+    @Published var wordSynced = false           // the words carry times found by listening to the song (see Aligner)
     @Published var translated: [Int: String] = [:]
     @Published var translating = false
     private(set) var loadedID = ""
@@ -74,7 +76,33 @@ final class LyricsStore: ObservableObject {
     func ensure(_ s: Song) async { if loadedID != s.id { await load(for: s) } }
 
     func load(for s: Song) async {
+        await loadSource(s)
+        guard loadedID == s.id else { return }
+        mergeAligned(id: s.id)
+        WordSync.shared.consider(s)
+    }
+
+    func alignedURL(_ id: String) -> URL { dir.appendingPathComponent("\(id).aligned.lrc") }
+
+    /// swaps in the word times found by listening to the song, when they belong to these very lyrics
+    @discardableResult
+    func mergeAligned(id: String) -> Bool {
+        wordSynced = false
+        guard synced, let t = try? String(contentsOf: alignedURL(id), encoding: .utf8), let p = Self.parse(t), p.count == lines.count else { return false }
+        for (a, b) in zip(p, lines) where a.text != b.text { return false }
+        lines = p
+        wordSynced = true
+        return true
+    }
+
+    func clearAligned(_ song: Song) async {
+        try? FileManager.default.removeItem(at: alignedURL(song.id))
+        await load(for: song)
+    }
+
+    private func loadSource(_ s: Song) async {
         loadedID = s.id
+        wordSynced = false
         lines = []; plain = ""; synced = false; translated = [:]
         offset = offsets[s.id] ?? 0
         markedNone = noneIDs.contains(s.id)
@@ -131,12 +159,14 @@ final class LyricsStore: ObservableObject {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(song.id).lrc"))
         }
         if noneIDs.contains(song.id) { noneIDs.remove(song.id); if let d = try? JSONEncoder().encode(Array(noneIDs)) { try? d.write(to: dir.appendingPathComponent("none.json")) } }
+        try? FileManager.default.removeItem(at: alignedURL(song.id))
         await load(for: song)
     }
 
     func removeOwnFile(for song: Song) async {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(song.id).lrc"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(song.id).json"))
+        try? FileManager.default.removeItem(at: alignedURL(song.id))
         await load(for: song)
     }
 
@@ -199,6 +229,7 @@ final class LyricsStore: ObservableObject {
         for (i, o) in out.enumerated() {
             let next = i + 1 < out.count ? out[i + 1].0 : o.0 + 5
             var l = LyricLine(id: i, time: o.0, text: o.1)
+            l.tagged = !o.2.isEmpty
             l.end = next
             l.words = o.2.isEmpty ? estimate(o.1, from: o.0, to: next) : o.2
             result.append(l)

@@ -204,6 +204,7 @@ struct LyricsPage: View {
     @AppStorage("censorLyrics") private var censor = false
     @AppStorage("lyricsRomanize") private var romanize = false
     @AppStorage("lyricsTranslate") private var translate = false
+    @ObservedObject private var sync = WordSync.shared
     @State private var sharing = false
 
     var body: some View {
@@ -218,6 +219,7 @@ struct LyricsPage: View {
                     Spacer()
                     if store.offset != 0 { Text(String(format: "%+.2f s", store.offset)).font(.system(size: 11, design: .rounded)).foregroundStyle(.white.opacity(0.6)) }
                     if store.translating { ProgressView().controlSize(.small) }
+                    if sync.busyID == s.id { HStack(spacing: 6) { ProgressView(value: sync.progress).frame(width: 54); Text("Syncing words").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)) } }
                     menu(s)
                 }
                 .padding(.horizontal, 60).padding(.bottom, 10)
@@ -270,6 +272,11 @@ struct LyricsPage: View {
             Toggle("Hide bad words", isOn: $censor)
             Toggle("Show in Latin letters", isOn: $romanize)
             if #available(macOS 15.0, *) { Toggle("Translate", isOn: $translate) }
+            Divider()
+            if sync.ready {
+                Button(store.wordSynced ? "Sync words again" : "Sync words precisely") { sync.run(s) }.disabled(sync.busyID != nil || !store.synced)
+                if store.wordSynced { Button("Go back to the original timing") { Task { await store.clearAligned(s) } } }
+            }
             Divider()
             Button("Import a lyrics file…") { Task { await store.importFile(for: s) } }
             if store.hasOwnFile { Button("Remove my lyrics file") { Task { await store.removeOwnFile(for: s) } } }

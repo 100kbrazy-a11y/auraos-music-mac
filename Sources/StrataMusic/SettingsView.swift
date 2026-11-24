@@ -62,6 +62,7 @@ struct GeneralSettings: View {
                 Toggle("Show a notification when the song changes (while the app is in the background)", isOn: $notifySong)
                     .onChange(of: notifySong) { on in if on { Notifier.authorize() } }
             }
+            WordSyncSection()
             Section("Opus and Ogg files") {
                 Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
             }

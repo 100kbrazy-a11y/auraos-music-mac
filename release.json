@@ -2,6 +2,16 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.6.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Precise word timing: Strata can now listen to a song with Meta's MMS forced-alignment model (int8, ONNX) and time every word, so the lit word follows the voice. Turn it on in Settings > General > Precise word timing (a one-time download of about 356 MB), or use Sync words precisely in the lyrics menu.",
+    "Results are saved as an enhanced .lrc (a time before each word), which older Strata versions can read. Original timing is one click away.",
+    "Strata Music for Mac now needs macOS 14 or later (the word-timing engine, ONNX Runtime, requires it)."
+   ]
+  },
+  {
    "version": "2.5.1",
    "name": "The Macster Update",
    "date": "2026-11-24",
