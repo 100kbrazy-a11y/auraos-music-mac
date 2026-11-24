@@ -62,6 +62,14 @@ enum Disk {
     static let playable: Set<String> = ["mp3", "m4a", "aac", "flac", "wav", "aif", "aiff", "alac", "caf", "mp4", "opus", "ogg", "oga"]
     static let notYet: Set<String> = ["webm"]
 
+    /// stores a picture in the covers folder and returns its file name
+    static func saveCover(_ data: Data) -> String {
+        let name = fnv(data.prefix(8192)) + "-\(data.count).img"
+        let dest = dir.appendingPathComponent("covers/\(name)")
+        if !FileManager.default.fileExists(atPath: dest.path) { try? data.write(to: dest) }
+        return name
+    }
+
     /// where an Opus song is kept after it has been decoded for playback
     static func decodedURL(_ s: Song) -> URL {
         let d = dir.appendingPathComponent("decoded", isDirectory: true)
@@ -149,6 +157,17 @@ enum Disk {
     }
 }
 
+/// holds the newest library data until it is written (so quitting never loses a change)
+final class SaveBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data: Data?
+    func set(_ d: Data) { lock.lock(); data = d; lock.unlock() }
+    func flush() {
+        lock.lock(); let d = data; data = nil; lock.unlock()
+        if let d = d { try? d.write(to: Disk.dir.appendingPathComponent("library.json"), options: .atomic) }
+    }
+}
+
 // MARK: - the library
 
 @MainActor
@@ -159,6 +178,9 @@ final class Library: ObservableObject {
     @Published var favorites: Set<String> = []
     @Published var playlists: [Playlist] = []
     @Published var folders: [String] = []
+    @Published var smart: [SmartPlaylist] = []
+    private let watcher = FolderWatcher()
+    nonisolated private static let box = SaveBox()
     @Published var status: String = ""
 
     private(set) var byID: [String: Song] = [:]
@@ -169,6 +191,7 @@ final class Library: ObservableObject {
         var favorites: [String]
         var playlists: [Playlist]
         var folders: [String]
+        var smart: [SmartPlaylist]?
     }
 
     init() {
@@ -176,15 +199,42 @@ final class Library: ObservableObject {
         if let d = try? Data(contentsOf: Disk.dir.appendingPathComponent("library.json")),
            let s = try? JSONDecoder().decode(Saved.self, from: d) {
             songs = s.songs.filter { FileManager.default.fileExists(atPath: $0.path) }
-            favorites = Set(s.favorites); playlists = s.playlists; folders = s.folders
+            favorites = Set(s.favorites); playlists = s.playlists; folders = s.folders; smart = s.smart ?? []
         }
         rebuild()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in Library.box.flush() }
+        watcher.onChange = { [weak self] in Task { @MainActor in self?.watchedChange() } }
+        watcher.watch(folders)
     }
 
+    /// the library is written a moment after the last change (and always when the app quits)
     func save() {
-        let s = Saved(songs: songs, favorites: Array(favorites), playlists: playlists, folders: folders)
-        if let d = try? JSONEncoder().encode(s) { try? d.write(to: Disk.dir.appendingPathComponent("library.json"), options: .atomic) }
+        let s = Saved(songs: songs, favorites: Array(favorites), playlists: playlists, folders: folders, smart: smart)
+        if let d = try? JSONEncoder().encode(s) { Library.box.set(d) }
+        Task { try? await Task.sleep(nanoseconds: 800_000_000); Library.box.flush() }
+        watcher.watch(folders)
     }
+
+    /// something changed inside a music folder: look for new and missing songs, quietly
+    private func watchedChange() {
+        guard Downloads.shared.active == 0 else { return }
+        songs = songs.filter { FileManager.default.fileExists(atPath: $0.path) }
+        rebuild()
+        Task { await importAsync(folders.map { URL(fileURLWithPath: $0) }, quiet: true) }
+    }
+
+    func rebuildNow() { rebuild() }
+
+    func updateSong(_ s: Song) {
+        guard let i = songs.firstIndex(where: { $0.id == s.id }) else { return }
+        songs[i] = s; rebuild(); save()
+    }
+
+    func saveSmart(_ sp: SmartPlaylist) {
+        if let i = smart.firstIndex(where: { $0.id == sp.id }) { smart[i] = sp } else { smart.append(sp) }
+        save()
+    }
+    func deleteSmart(_ id: String) { smart.removeAll { $0.id == id }; save() }
 
     private func rebuild() {
         byID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -210,37 +260,39 @@ final class Library: ObservableObject {
     }
 
     func importURLs(_ urls: [URL], remember: Bool = false, thenPlay: Bool = false) {
-        Task {
-            status = "Looking for music…"
-            var files: [URL] = []; var skipped = 0
-            for u in urls {
-                let found = await Task.detached { Disk.audioFiles(in: u) }.value
-                files += found.files; skipped += found.skipped
-                if remember, !folders.contains(u.path) { folders.append(u.path) }
-            }
-            let known = Set(songs.map { $0.path })
-            let fresh = files.filter { !known.contains($0.path) }
-            var batch: [Song] = []
-            for (i, f) in fresh.enumerated() {
-                status = "Reading \(i + 1) of \(fresh.count)…"
-                if let s = await Disk.readSong(f) { batch.append(s) }
-                if batch.count >= 40 { songs.append(contentsOf: batch); batch = []; rebuild() }
-            }
-            if !batch.isEmpty { songs.append(contentsOf: batch); rebuild() }
-            save()
-            var msg = fresh.isEmpty ? "Nothing new" : "Added \(fresh.count) songs"
-            if skipped > 0 { msg += " · \(skipped) WebM files can't be played on the Mac yet" }
-            status = msg
-            if thenPlay, let first = files.first, let s = songs.first(where: { $0.path == first.path }) { Player.shared.play(s, in: [s]) }
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            if status == msg { status = "" }
+        Task { await importAsync(urls, remember: remember, thenPlay: thenPlay) }
+    }
+
+    func importAsync(_ urls: [URL], remember: Bool = false, thenPlay: Bool = false, quiet: Bool = false) async {
+        if !quiet { status = "Looking for music…" }
+        var files: [URL] = []; var skipped = 0
+        for u in urls {
+            let found = await Task.detached { Disk.audioFiles(in: u) }.value
+            files += found.files; skipped += found.skipped
+            if remember, !folders.contains(u.path) { folders.append(u.path) }
         }
+        let known = Set(songs.map { $0.path })
+        let fresh = files.filter { !known.contains($0.path) }
+        var batch: [Song] = []
+        for (i, f) in fresh.enumerated() {
+            if !quiet { status = "Reading \(i + 1) of \(fresh.count)…" }
+            if let s = await Disk.readSong(f) { batch.append(s) }
+            if batch.count >= 40 { songs.append(contentsOf: batch); batch = []; rebuild() }
+        }
+        if !batch.isEmpty { songs.append(contentsOf: batch); rebuild() }
+        save()
+        if quiet && fresh.isEmpty { return }
+        var msg = fresh.isEmpty ? "Nothing new" : "Added \(fresh.count) songs"
+        if skipped > 0 { msg += " · \(skipped) WebM files can't be played on the Mac yet" }
+        status = msg
+        if thenPlay, let first = files.first, let s = songs.first(where: { $0.path == first.path }) { Player.shared.play(s, in: [s]) }
+        Task { try? await Task.sleep(nanoseconds: 6_000_000_000); if status == msg { status = "" } }
     }
 
     /// a song the app just downloaded: tags from the YouTube track, the cover saved next to the library's other covers
     func addDownloaded(_ url: URL, track t: Track, cover: Data?, fallbackDuration: Double) async -> Song? {
-        if let have = songs.first(where: { $0.path == url.path }) { return have }
         var s: Song
+        let existing = songs.firstIndex(where: { $0.path == url.path })
         if let read = await Disk.readSong(url) { s = read }
         else if fallbackDuration > 1 {
             s = Song(id: fnv(Data(url.path.utf8)), path: url.path, title: t.title, artist: t.artist, album: "", albumArtist: "", track: 0, year: "", duration: fallbackDuration, cover: "", added: Date().timeIntervalSince1970)
@@ -258,7 +310,8 @@ final class Library: ObservableObject {
             s.cover = name
         }
         s.yt = t.id
-        songs.append(s); rebuild(); save()
+        if let i = existing { s.added = songs[i].added; songs[i] = s } else { songs.append(s) }
+        rebuild(); save()
         return s
     }
 

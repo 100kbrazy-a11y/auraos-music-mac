@@ -36,6 +36,11 @@ struct GeneralSettings: View {
                     Text("\(lib.songs.count) songs").foregroundStyle(.secondary)
                     if !lib.status.isEmpty { Text(lib.status).foregroundStyle(.secondary).lineLimit(1) }
                 }
+                HStack {
+                    Button("Find Missing Covers") { lib.findMissingCovers() }
+                    Button("Bring Over from Music…") { lib.importAppleMusic() }
+                }
+                Text("The music folders are watched: songs you add or remove show up by themselves.").font(.callout).foregroundStyle(.secondary)
             }
             Section("Player") {
                 Toggle("Falling leaves (The Thanksgiving Update)", isOn: $leaves)

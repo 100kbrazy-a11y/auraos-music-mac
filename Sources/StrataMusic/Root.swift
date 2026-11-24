@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 
 enum Nav: Hashable {
-    case songs, recent, albums, artists, favorites
+    case songs, recent, albums, artists, favorites, duplicates
+    case smart(String)
     case youtube, downloads, settings
     case playlist(String)
 }
@@ -259,6 +260,7 @@ struct SidebarView: View {
     @ObservedObject var dl = Downloads.shared
     @State private var renaming: Playlist?
     @State private var newName = ""
+    @State private var editingSmart: SmartPlaylist?
 
     var body: some View {
         List(selection: $nav) {
@@ -268,6 +270,19 @@ struct SidebarView: View {
                 Label("Albums", systemImage: "square.stack").tag(Nav.albums)
                 Label("Artists", systemImage: "music.mic").tag(Nav.artists)
                 Label("Favorites", systemImage: "heart").tag(Nav.favorites)
+                Label("Duplicates", systemImage: "square.on.square").tag(Nav.duplicates)
+            }
+            Section("Smart Playlists") {
+                ForEach(SmartPlaylist.builtIn + lib.smart) { sp in
+                    Label(sp.name, systemImage: "gearshape.2").tag(Nav.smart(sp.id))
+                        .contextMenu {
+                            if !sp.isBuiltIn {
+                                Button("Edit…") { editingSmart = sp }
+                                Button("Delete", role: .destructive) { if nav == .smart(sp.id) { nav = .songs }; lib.deleteSmart(sp.id) }
+                            }
+                        }
+                }
+                Button { editingSmart = SmartPlaylist() } label: { Label("New Smart Playlist", systemImage: "plus") }.buttonStyle(.plain).foregroundStyle(.secondary)
             }
             Section("YouTube") {
                 Label("Search & Download", systemImage: "magnifyingglass").tag(Nav.youtube)
@@ -278,10 +293,13 @@ struct SidebarView: View {
                     Label(p.name, systemImage: "music.note.list").tag(Nav.playlist(p.id))
                         .contextMenu {
                             Button("Rename…") { newName = p.name; renaming = p }
+                            Button("Duplicate") { lib.duplicate(p) }
+                            Button("Export as M3U…") { lib.exportM3U(p) }
                             Button("Delete", role: .destructive) { if nav == .playlist(p.id) { nav = .songs }; lib.deletePlaylist(p.id) }
                         }
                 }
                 Button { lib.newPlaylist("New Playlist") } label: { Label("New Playlist", systemImage: "plus") }.buttonStyle(.plain).foregroundStyle(.secondary)
+                Button { lib.importM3U() } label: { Label("Import Playlist…", systemImage: "square.and.arrow.down") }.buttonStyle(.plain).foregroundStyle(.secondary)
             }
         }
         .listStyle(.sidebar)
@@ -298,6 +316,7 @@ struct SidebarView: View {
             }
             .padding(10)
         }
+        .sheet(item: $editingSmart) { sp in SmartEditor(sp: sp, isNew: !lib.smart.contains { $0.id == sp.id }) }
         .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") { if let p = renaming { lib.rename(p.id, to: newName) }; renaming = nil }
@@ -323,6 +342,9 @@ struct DetailRoot: View {
                 case .albums: AlbumsView(search: search)
                 case .artists: ArtistsView(search: search)
                 case .favorites: SongTable(songs: lib.favoriteSongs, search: search)
+                case .duplicates: DuplicatesView()
+                case .smart(let id):
+                    if let sp = lib.smartPlaylist(id) { SongTable(songs: lib.songs(in: sp), search: search, keepOrder: true) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
                 case .youtube: YouTubeView()
                 case .downloads: DownloadsView()
                 case .settings: SettingsView(embedded: true)
@@ -346,6 +368,8 @@ struct DetailRoot: View {
         case .albums: return "Albums"
         case .artists: return "Artists"
         case .favorites: return "Favorites"
+        case .duplicates: return "Duplicates"
+        case .smart(let id): return lib.smartPlaylist(id)?.name ?? "Smart Playlist"
         case .youtube: return "Search & Download"
         case .downloads: return "Downloads"
         case .settings: return "Settings"

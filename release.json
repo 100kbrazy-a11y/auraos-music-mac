@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.4.0",
+   "name": "The Macster Update",
+   "date": "2026-11-23",
+   "notes": [
+    "Edit Info: change title, artist, album, year and cover (from a file, the clipboard or online) and look up song info; it is written into M4A files too",
+    "Smart Playlists with your own rules, plus Most Played, Recently Played and Never Played",
+    "Playlists: duplicate, export and import M3U, bring your playlists, play counts and favorites over from the Music app",
+    "Your music folders are watched, so new and deleted songs appear by themselves; a Duplicates page; Find Missing Covers"
+   ]
+  },
+  {
    "version": "1.3.0",
    "name": "The Macster Update",
    "date": "2026-11-23",

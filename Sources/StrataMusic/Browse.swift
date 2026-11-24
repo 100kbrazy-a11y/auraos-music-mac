@@ -14,10 +14,11 @@ struct SongTable: View {
     @State private var selection = Set<String>()
     @State private var order: [KeyPathComparator<Song>]
     @State private var exporting: Song?
+    @State private var editing: Song?
 
-    init(songs: [Song], search: String = "", recent: Bool = false) {
+    init(songs: [Song], search: String = "", recent: Bool = false, keepOrder: Bool = false) {
         self.songs = songs; self.search = search
-        _order = State(initialValue: recent ? [KeyPathComparator(\Song.added, order: .reverse)] : [KeyPathComparator(\Song.title)])
+        _order = State(initialValue: keepOrder ? [] : recent ? [KeyPathComparator(\Song.added, order: .reverse)] : [KeyPathComparator(\Song.title)])
     }
 
     private var shown: [Song] {
@@ -59,6 +60,7 @@ struct SongTable: View {
                 Button("Go to Album") { NotificationCenter.default.post(name: .goRef, object: AlbumRef(key: first.albumKey)) }
                 Button("Go to Artist") { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: first.artistKey)) }
                 Divider()
+                Button("Edit Info…") { editing = first }
                 Button("Export…") { exporting = first }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(picked.map { $0.url }) }
                 Button("Remove from Library", role: .destructive) { lib.remove(Set(ids)) }
@@ -68,6 +70,7 @@ struct SongTable: View {
         }
         .scrollContentBackground(.hidden)
         .sheet(item: $exporting) { ExportSheet(song: $0) }
+        .sheet(item: $editing) { EditInfoSheet(song: $0) }
         .overlay { if songs.isEmpty { EmptyLibrary() } }
     }
 }
