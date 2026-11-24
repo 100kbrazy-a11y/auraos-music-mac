@@ -81,7 +81,7 @@ struct UpdateSettings: View {
                 Toggle("Check for updates when the app opens", isOn: $auto)
                 HStack {
                     Button("Check Now") { Task { await updater.check() } }.disabled(updater.busy)
-                    if let r = updater.available { Button("Download \(r.version)") { Task { await updater.install() } }.disabled(updater.busy) }
+                    if let r = updater.available { Button("Update to \(r.version)") { Task { await updater.install() } }.disabled(updater.busy) }
                     if updater.busy { ProgressView().controlSize(.small) }
                 }
                 if !updater.status.isEmpty { Text(updater.status).foregroundStyle(.secondary) }

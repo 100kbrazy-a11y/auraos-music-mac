@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.0.2",
+   "name": "The Thanksgiving Update",
+   "date": "2026-11-23",
+   "notes": [
+    "Updates now happen inside the app: a small window asks \"Update available\" with Nah, I'm good and Yes, of course, then downloads, replaces the app and reopens it",
+    "The app checks when it opens and every few hours, and there is a Check for Updates… item in the Strata Music menu"
+   ]
+  },
+  {
    "version": "1.0.1",
    "name": "The Thanksgiving Update",
    "date": "2026-11-23",

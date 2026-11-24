@@ -17,10 +17,17 @@ struct StrataApp: App {
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in lib.importURLs([url], thenPlay: true) }
                 .task {
-                    if UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true { await updater.check(silent: true) }
+                    // when the app opens, then every few hours while it stays open
+                    while !Task.isCancelled {
+                        if UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true { await updater.check(silent: true) }
+                        try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
+                    }
                 }
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { Task { await updater.check() } }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Add Music…") { lib.pickMusic() }.keyboardShortcut("o")
             }

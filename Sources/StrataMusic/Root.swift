@@ -47,6 +47,7 @@ struct RootView: View {
         .dropDestination(for: URL.self) { urls, _ in lib.importURLs(urls, remember: true); return true } isTargeted: { dropping = $0 }
         .overlay { if dropping { RoundedRectangle(cornerRadius: 14).strokeBorder(player.accent, lineWidth: 3).padding(6).allowsHitTesting(false) } }
         .background(Color(red: 0.07, green: 0.07, blue: 0.08))
+        .overlay { UpdatePrompt() }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
     }
 
@@ -87,7 +88,7 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             if let r = updater.available {
-                Button { Task { await updater.install() } } label: {
+                Button { updater.showPrompt = true } label: {
                     Label("Update to \(r.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).padding(10)
