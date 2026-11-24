@@ -116,6 +116,7 @@ final class WordSync: ObservableObject {
     }
 
     func removeModel() {
+        RunnerCache.shared.drop()
         try? FileManager.default.removeItem(at: Self.modelFile)
         model = .missing
     }
@@ -127,6 +128,7 @@ final class WordSync: ObservableObject {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
         }
         tried = []
+        try? FileManager.default.removeItem(at: Disk.dir.appendingPathComponent("align", isDirectory: true))
         if let s = Player.shared.current { Task { await LyricsStore.shared.load(for: s) } }
     }
 
@@ -138,10 +140,10 @@ final class WordSync: ObservableObject {
         guard !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
         let store = LyricsStore.shared
         guard store.loadedID == s.id, store.synced, !store.wordSynced else { return }
-        run(s)
+        run(s, manual: false)
     }
 
-    func run(_ s: Song) {
+    func run(_ s: Song, manual: Bool = true) {
         guard ready, busyID == nil else { return }
         let store = LyricsStore.shared
         guard store.loadedID == s.id, store.synced else { return }
@@ -151,11 +153,12 @@ final class WordSync: ObservableObject {
         lastError = nil
         let lines = store.lines, offset = store.offset
         let url = s.url, path = Self.modelFile.path
-        Task.detached(priority: .utility) { [weak self] in
+        let cache = Disk.dir.appendingPathComponent("align", isDirectory: true).appendingPathComponent("\(s.id).emis")
+        Task.detached(priority: manual ? .userInitiated : .utility) { [weak self] in
             var text: String? = nil
             var failure: String? = nil
             do {
-                text = try Aligner.align(url: url, modelPath: path, lines: lines, offset: offset) { p in
+                text = try Aligner.align(url: url, modelPath: path, lines: lines, offset: offset, cache: cache) { p in
                     Task { @MainActor in self?.progress = p }
                 }
             } catch { failure = error.localizedDescription }
