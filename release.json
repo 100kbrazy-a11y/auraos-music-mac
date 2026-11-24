@@ -2,6 +2,16 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.0.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Sync between your devices: pick a folder that iCloud Drive, Dropbox or Syncthing already shares, and likes, playlists and play counts are merged through it. No server",
+    "Newest like or unlike wins, playlists merge by name (a deleted playlist stays deleted), and play counts never go backwards",
+    "Settings has new tabs: Look, Sync and Advanced"
+   ]
+  },
+  {
    "version": "1.9.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

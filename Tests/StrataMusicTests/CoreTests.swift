@@ -74,4 +74,27 @@ final class CoreTests: XCTestCase {
         XCTAssertNil(LyricsFilter.romanize("Hello there"))
         XCTAssertNotNil(LyricsFilter.romanize("Привет мир"))
     }
+
+    func testSyncKeepsTheLargestPlayCount() {
+        XCTAssertEqual(SyncMerge.plays([3, 9, 5]), 9)
+        XCTAssertEqual(SyncMerge.plays([]), 0)
+    }
+
+    func testSyncLatestLikeWins() {
+        XCTAssertEqual(SyncMerge.fav([SyncFav(fav: true, at: 10), SyncFav(fav: false, at: 20)])?.fav, false)
+        XCTAssertEqual(SyncMerge.fav([SyncFav(fav: false, at: 30), SyncFav(fav: true, at: 20)])?.fav, false)
+        XCTAssertNil(SyncMerge.fav([]))
+    }
+
+    func testSyncPlaylistsAndDeletes() {
+        let old = SyncPlaylist(keys: ["a|x"], updated: 10), new = SyncPlaylist(keys: ["a|x", "b|y"], updated: 20)
+        XCTAssertEqual(SyncMerge.playlist([old, new], deleted: [])?.keys.count, 2)
+        XCTAssertNil(SyncMerge.playlist([old, new], deleted: [25]))          // deleted after the last change
+        XCTAssertNotNil(SyncMerge.playlist([old, new], deleted: [15]))       // changed again after it was deleted
+    }
+
+    func testSameSongSameKey() {
+        XCTAssertEqual(SyncMerge.key(title: "  Café  Del Mar ", artist: "Energy 52 feat. X"), SyncMerge.key(title: "cafe del mar", artist: "energy 52"))
+        XCTAssertNotEqual(SyncMerge.key(title: "a", artist: "b"), SyncMerge.key(title: "a", artist: "c"))
+    }
 }

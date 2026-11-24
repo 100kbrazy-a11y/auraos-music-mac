@@ -103,7 +103,7 @@ struct RootView: View {
         })
         .overlay { UpdatePrompt() }
         .overlay { ArtistGrabPrompt() }
-        .onAppear { Downloads.shared.lib = lib; player.restoreLast(lib) }
+        .onAppear { Downloads.shared.lib = lib; player.restoreLast(lib); Sync.shared.start() }
         .onChange(of: showPlayer) { on in
             if on {
                 // Esc closes the player (unless a menu, popover or sheet is open and wants the key first)
