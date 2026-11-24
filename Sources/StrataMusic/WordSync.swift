@@ -17,9 +17,9 @@ final class WordSync: ObservableObject {
         try? FileManager.default.removeItem(at: Disk.dir.appendingPathComponent("models", isDirectory: true))
         try? FileManager.default.removeItem(at: Disk.dir.appendingPathComponent("align", isDirectory: true))
         // timings made by an older version of the timing code are made again
-        if UserDefaults.standard.integer(forKey: "alignerGeneration") < 3 {
+        if UserDefaults.standard.integer(forKey: "alignerGeneration") < 4 {
             Self.deleteAlignedFiles()
-            UserDefaults.standard.set(3, forKey: "alignerGeneration")
+            UserDefaults.standard.set(4, forKey: "alignerGeneration")
         }
     }
 

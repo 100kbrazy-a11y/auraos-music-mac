@@ -301,9 +301,51 @@ static int match(int Ns, const double *cand, const double *strength, int Nc, con
     return nmatch;
 }
 
-int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *ends, double *end) {
+// where the voice comes back in after a pause of at least [min_gap] seconds, nearest to [near] and within [radius] of it
+int strata_voice_reentry(const strata_voice *v, double near, double radius, double min_gap, double *when) {
+    if (!v) return 0;
+    int a = frame_of(v, near - radius), b = frame_of(v, near + radius);
+    int need = (int)ceil(min_gap / v->frame_s);
+    double best = 0; int found = 0;
+    for (int t = a + 1; t <= b; t++) {
+        if (!v->voiced[t] || v->voiced[t - 1]) continue;
+        int g = 0;
+        for (int u = t - 1; u >= 0 && !v->voiced[u]; u--) g++;
+        if (g < need) continue;
+        double w = time_of(v, t) - 0.5 * v->frame_s;
+        if (!found || fabs(w - near) < fabs(best - near)) { best = w; found = 1; }
+    }
+    if (found && when) *when = best;
+    return found;
+}
+
+static int cmpd(const void *a, const void *b) { double x = *(const double *)a, y = *(const double *)b; return x < y ? -1 : (x > y ? 1 : 0); }
+
+// How far off the lyrics' times are from the singing. For each line start, the nearest place the voice comes back in after a pause says where the line
+// really begins; the typical difference, if it is steady, is the answer (seconds to ADD to the lyrics' times; 0 when it is small or can't be trusted).
+double strata_voice_residual(const strata_voice *v, int n, const double *bases, int *used) {
+    double d[512];
+    int m = 0;
+    for (int i = 0; i < n && m < 512; i++) {
+        double w;
+        if (strata_voice_reentry(v, bases[i], 1.0, 0.12, &w)) { double x = w - bases[i]; if (fabs(x) < 0.9) d[m++] = x; }
+    }
+    if (used) *used = m;
+    if (m < 4 || m < n / 4) return 0;
+    qsort(d, (size_t)m, sizeof(double), cmpd);
+    double med = (m % 2) ? d[m / 2] : 0.5 * (d[m / 2 - 1] + d[m / 2]);
+    double dev[512];
+    for (int i = 0; i < m; i++) dev[i] = fabs(d[i] - med);
+    qsort(dev, (size_t)m, sizeof(double), cmpd);
+    double mad = (m % 2) ? dev[m / 2] : 0.5 * (dev[m / 2 - 1] + dev[m / 2]);
+    if (mad > 0.3) return 0;
+    return fabs(med) >= 0.12 ? med : 0;
+}
+
+int strata_voice_align_line(const strata_voice *v, double ws, double we, double after, double base, double slack, int n_words, const int *syll, const int *quick, double *starts, double *ends, double *end) {
     if (!v || n_words <= 0 || we <= ws) return 0;
-    int w0 = frame_of(v, ws), w1 = frame_of(v, we);
+    // the line before was still being sung until [after]: its tail is not where this one starts
+    int w0 = frame_of(v, after > 0 && after + 0.04 > ws ? after + 0.04 : ws), w1 = frame_of(v, we);
     if (w1 - w0 < 8) return 0;
 
     // where the line is sung: the first steady stretch of voice in the window, to the last
@@ -318,7 +360,7 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
     for (int i = 0; i < n_words; i++) Ns += syll[i] < 1 ? 1 : syll[i];
     // the stamp is a good guide to where the line starts, and a line has only so many syllables to sing: don't let a held instrument stretch it
     double ts = time_of(v, s) - 0.5 * v->frame_s, te = time_of(v, e) + 0.5 * v->frame_s;
-    if (ts < base - 0.2) { ts = base - 0.2; s = frame_of(v, ts); }   // a breath, an ad-lib or the end of the line before doesn't start this one
+    if (ts < base - slack) { ts = base - slack; s = frame_of(v, ts); }   // a breath, an ad-lib or the end of the line before doesn't start this one
     double longest = 0.9 * Ns + 0.8;
     if (te - ts > longest) { te = ts + longest; e = frame_of(v, te); }
     if (e - s < 6) return 0;

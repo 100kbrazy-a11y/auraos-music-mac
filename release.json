@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.1.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Word timing now measures how far a lyrics file is from the singing. Where the voice comes back in after each pause says whether the lines are early or late as a whole, and every line moves by that steady amount. This replaces trusting your old nudge: a song you had nudged 0.5 s later, whose words came out 0.3-0.7 s late, is corrected.",
+    "A line no longer starts in the tail of the line before it, so the first word of a line that follows a pause is lit when the voice comes in, not a quarter of a second early.",
+    "Words never pile up on the same instant at the start of a line.",
+    "Songs timed before this update are timed again the next time they play."
+   ]
+  },
+  {
    "version": "3.0.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

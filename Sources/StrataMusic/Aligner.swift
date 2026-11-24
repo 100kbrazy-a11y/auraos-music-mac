@@ -148,29 +148,41 @@ enum Aligner {
         guard let voice else { throw AlignError("Couldn't make sense of this song's audio") }
         defer { strata_voice_free(voice) }
         progress(0.7)
-        var out = ""
+        // The lyrics' times are the authority for which line is which, but a file can be a little early or late as a whole (or carry an old nudge of yours that
+        // no longer fits). Where the voice comes back in after each pause says how far off it is; if that is steady, every line moves by the same amount.
+        let bases = lines.filter { !$0.text.isEmpty && !$0.words.isEmpty && !isAdlib($0.text) }.map { $0.time + offset }
+        var used: Int32 = 0
+        let residual = bases.withUnsafeBufferPointer { strata_voice_residual(voice, Int32($0.count), $0.baseAddress, &used) }
+        let shift = max(-3, min(3, offset + residual))
+        var out = "[strata:shift=\(String(format: "%+.2f", shift)) found=\(String(format: "%+.2f", residual)) from=\(used)]\n"
         var prevStamp = 0.0
+        var prevEnd = 0.0
         var done = 0
         for (i, line) in lines.enumerated() {
-            let base = line.time + offset
+            let base = line.time + shift
             let parts = pieces(line)
             var starts: ([Double], [Double])? = nil
-            if let w = window(lines, i, offset: offset, seconds: seconds), !parts.isEmpty {
+            if let w = window(lines, i, offset: shift, seconds: seconds), !parts.isEmpty {
                 var syll = parts.map { Int32(Syllables.count($0)) }
                 var quick = Syllables.quick(parts)
                 var s = [Double](repeating: 0, count: parts.count)
                 var e = [Double](repeating: 0, count: parts.count)
                 var end = 0.0
-                let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &quick, &s, &e, &end)
-                if q > 0 { starts = (s, e) }
+                // a (bracketed ad-lib) line is sung over the line before it; any other line starts after the one before it stopped
+                let after = isAdlib(line.text) || prevEnd > base + 0.25 ? 0 : prevEnd
+                let q = strata_voice_align_line(voice, w.0, w.1, after, base, 0.2, Int32(parts.count), &syll, &quick, &s, &e, &end)
+                if q > 0 { starts = (s, e); prevEnd = end }
             }
             if var (s, e) = starts {
                 // inside the line's own slot, and never before the one before it
-                let slot = slot(lines, i, offset: offset)
+                let slot = slot(lines, i, offset: shift)
                 let lastOK = max(slot.start, slot.end - 0.12)
                 let first = max(slot.start, prevStamp)
-                var prev = first
-                for k in 0..<s.count { s[k] = min(max(s[k] + 0.03, prev), lastOK); prev = s[k] }
+                for k in 0..<s.count {
+                    s[k] = max(s[k] + 0.03, first)
+                    if k > 0 { s[k] = max(s[k], s[k - 1] + 0.06) }        // words never pile up on the same instant
+                }
+                if let last = s.last, last > lastOK, last > first { for k in 0..<s.count { s[k] = first + (s[k] - first) * (lastOK - first) / (last - first) } }
                 done += 1
                 prevStamp = first
                 out += "[\(stamp(first))]"
@@ -185,7 +197,7 @@ enum Aligner {
                 let st = max(prevStamp, base)
                 prevStamp = st
                 out += "[\(stamp(st))]"
-                if line.tagged { for w in line.words { out += "<\(stamp(w.start + offset))>\(w.text)"; if let e = w.end { out += "<\(stamp(e + offset))>" } } }
+                if line.tagged { for w in line.words { out += "<\(stamp(w.start + shift))>\(w.text)"; if let e = w.end { out += "<\(stamp(e + shift))>" } } }
                 else { out += line.text }
             }
             out += "\n"

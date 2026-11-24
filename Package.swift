@@ -8,6 +8,6 @@ let package = Package(
         // the small voice finder behind precise word timing (plain C, no libraries)
         .target(name: "CVoice", path: "Sources/CVoice"),
         .executableTarget(name: "StrataMusic", dependencies: ["CVoice"], path: "Sources/StrataMusic"),
-        .testTarget(name: "StrataMusicTests", dependencies: ["StrataMusic"], path: "Tests/StrataMusicTests")
+        .testTarget(name: "StrataMusicTests", dependencies: ["StrataMusic", "CVoice"], path: "Tests/StrataMusicTests")
     ]
 )
