@@ -109,14 +109,6 @@ struct SongTable: View {
             let result = await Task.detached(priority: .userInitiated) { Self.filtered(snapshot, q).sorted(using: ord) }.value
             if !Task.isCancelled { sortedList = result }
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Picker("Layout", selection: $layout) {
-                    Image(systemName: "tablecells").tag("table")
-                    Image(systemName: "list.bullet").tag("list")
-                }.pickerStyle(.segmented).help("Table or list")
-            }
-        }
         .sheet(item: $exporting) { ExportSheet(song: $0) }
         .sheet(item: $editing) { EditInfoSheet(song: $0) }
         .overlay { if songs.isEmpty { EmptyLibrary() } }
@@ -281,6 +273,7 @@ struct AlbumDetail: View {
                 }
                 .padding(24).padding(.bottom, 80)
             }
+            .background { PageBackdrop(song: a.cover) }
             .navigationTitle(a.title)
         } else { Text("This album is gone.").foregroundStyle(.secondary) }
     }
@@ -347,6 +340,7 @@ struct ArtistDetail: View {
                 }
                 .padding(.horizontal, 24).padding(.bottom, 90).padding(.top, 12)
             }
+            .background { PageBackdrop(song: a.cover) }
             .navigationTitle(a.id)
             .task { await profiles.load(name) }
         } else { Text("No songs by this artist.").foregroundStyle(.secondary) }
@@ -381,5 +375,20 @@ struct ArtistDetail: View {
             Color.black.opacity(0.25)
         }
         .background(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
+    }
+}
+
+/// a soft wash of the cover's colours behind an artist or album page, fading into the window's dark background
+struct PageBackdrop: View {
+    let song: Song?
+    var body: some View {
+        ZStack {
+            Color(red: 0.07, green: 0.07, blue: 0.08)
+            SoftCover(song: song).scaleEffect(1.25).opacity(0.6)
+            LinearGradient(colors: [.clear, Color(red: 0.07, green: 0.07, blue: 0.08)], startPoint: .top, endPoint: .bottom)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .ignoresSafeArea()
     }
 }

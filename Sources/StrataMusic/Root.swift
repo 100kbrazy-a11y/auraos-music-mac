@@ -16,6 +16,7 @@ struct RootView: View {
     @AppStorage("leaves") private var leaves = true
     @AppStorage("season") private var seasonRaw = ""
     @State private var nav: Nav? = .home
+    @State private var colVis = NavigationSplitViewVisibility.all
     @State private var path = NavigationPath()
     @State private var showPlayer = false
     @State private var search = ""
@@ -28,17 +29,45 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("effects") private var effects = "full"
 
+    private var layoutPages: Bool {
+        switch nav ?? .songs { case .songs, .recent, .favorites, .smart, .playlist: return true; default: return false }
+    }
+
+    private var pageTitle: String {
+        switch nav ?? .songs {
+        case .home: return "Home"
+        case .replay: return "Replay"
+        case .songs: return "Songs"
+        case .recent: return "Recently Added"
+        case .albums: return "Albums"
+        case .artists: return "Artists"
+        case .favorites: return "Favorites"
+        case .duplicates: return "Duplicates"
+        case .smart(let id): return lib.smartPlaylist(id)?.name ?? "Smart Playlist"
+        case .youtube: return "Search & Download"
+        case .downloads: return "Downloads"
+        case .playlist(let id): return lib.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
+        }
+    }
+
     /// the falling effect to draw (nil = none)
     private var fx: Season? { reduceMotion || effects == "light" || ProcessInfo.processInfo.isLowPowerModeEnabled ? nil : Season.resolve(seasonRaw, legacyLeaves: leaves) }
 
     var body: some View {
         ZStack {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $colVis) {
                 SidebarView(nav: Binding(get: { nav }, set: { nav = $0; path = NavigationPath() }))
                     .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             } detail: {
                 DetailRoot(nav: nav ?? .songs, search: search, path: $path)
                     .background { if let fx = fx { DetailEffect(window: windowFrame, kind: fx) } }
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if !showPlayer {
+                            TopHeader(title: pageTitle, canGoBack: !path.isEmpty, back: { if !path.isEmpty { path.removeLast() } },
+                                      toggleSidebar: { colVis = colVis == .detailOnly ? .all : .detailOnly },
+                                      showLayout: path.isEmpty && layoutPages, search: $search, focus: $searchFocus, addMusic: { lib.pickMusic() })
+                        }
+                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if player.current != nil {
                             NowPlayingBar(open: openPlayer)
@@ -53,13 +82,9 @@ struct RootView: View {
                         }
                     }
             }
-            // the sidebar button, the title and the search box belong to the library, not to the full-screen player
-            .toolbar(showPlayer ? .hidden : .automatic, for: .windowToolbar)
-            .toolbarBackground(.hidden, for: .windowToolbar)
-            .toolbar {
-                ToolbarItem(placement: .automatic) { SearchField(text: $search, focus: $searchFocus) }
-                ToolbarItem(placement: .automatic) { Button { lib.pickMusic() } label: { Label("Add Music", systemImage: "plus") }.help("Add a music folder or songs") }
-            }
+            // there is no window toolbar at all (it always drew a separate bar, most visibly in full screen): the title, the search box
+            // and the buttons are part of the page's own top edge instead
+            .toolbar(.hidden, for: .windowToolbar)
             .animation(.easeInOut(duration: 0.2), value: lib.status)
 
             // typing in the search box: the page dims and a list of matches drops down
@@ -199,6 +224,38 @@ extension Notification.Name {
 
 // MARK: - the search box and its drop-down
 
+/// the top edge of the page: sidebar button, back button, title, layout switch, search and Add Music, drawn straight on the page background
+struct TopHeader: View {
+    var title: String
+    var canGoBack: Bool
+    var back: () -> Void
+    var toggleSidebar: () -> Void
+    var showLayout: Bool
+    @Binding var search: String
+    var focus: FocusState<Bool>.Binding
+    var addMusic: () -> Void
+    @AppStorage("songsLayout") private var layout = "table"
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Button(action: toggleSidebar) { Image(systemName: "sidebar.left") }.buttonStyle(.plain).help("Show or hide the sidebar")
+            if canGoBack { Button(action: back) { Image(systemName: "chevron.left") }.buttonStyle(.plain).help("Back") }
+            Text(canGoBack ? "" : title).font(.system(size: 22, weight: .bold)).lineLimit(1)
+            Spacer()
+            if showLayout {
+                Picker("Layout", selection: $layout) {
+                    Image(systemName: "tablecells").tag("table")
+                    Image(systemName: "list.bullet").tag("list")
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 84).help("Table or list")
+            }
+            SearchField(text: $search, focus: focus)
+            Button(action: addMusic) { Image(systemName: "plus") }.buttonStyle(.plain).help("Add a music folder or songs")
+        }
+        .font(.system(size: 15, weight: .semibold))
+        .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 8)
+    }
+}
+
 struct SearchField: View {
     @Binding var text: String
     var focus: FocusState<Bool>.Binding
@@ -214,8 +271,7 @@ struct SearchField: View {
         .padding(.horizontal, 10).padding(.vertical, 5)
         .frame(width: focus.wrappedValue ? 320 : 240)
         .animation(.easeOut(duration: 0.18), value: focus.wrappedValue)
-        // macOS 26's toolbar already draws its own glass pill around this; older versions get ours
-        .background { if #available(macOS 26.0, *) { EmptyView() } else { Capsule().fill(Color.white.opacity(focus.wrappedValue ? 0.14 : 0.08)) } }
+        .background { Capsule().fill(Color.white.opacity(focus.wrappedValue ? 0.14 : 0.08)) }
     }
 }
 

@@ -2,6 +2,16 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.4.3",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Songs no longer start loud and then drop: the volume level is worked out before a song starts (and for the next one ahead of time), and the enhanced engine now gets it too",
+    "No window toolbar any more, so there is no separate top bar in full screen either: the title, search, layout switch, sidebar and back buttons sit right on the page",
+    "Artist and album pages have a soft background taken from the cover"
+   ]
+  },
+  {
    "version": "2.4.2",
    "name": "The Macster Update",
    "date": "2026-11-24",

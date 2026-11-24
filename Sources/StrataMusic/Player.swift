@@ -163,29 +163,45 @@ final class Player: ObservableObject {
     @Published private(set) var spectrum: SongAnalysis?
     private(set) var levelDb: Float = 0
 
-    private func beginAnalysis(_ s: Song, url: URL) {
+    /// Makes the level ready before the song starts, so it never begins loud and then drops: a song that hasn't been measured yet
+    /// is measured first (this takes a moment, and playback gives up waiting after a second and a half).
+    private func prepareLevel(_ s: Song, url: URL) async {
         let d = UserDefaults.standard
         let level = d.object(forKey: "levelVolume") as? Bool ?? true
         let viz = (d.string(forKey: "visualizer") ?? "bars") != "off"
         guard level || viz else { spectrum = nil; levelDb = 0; setOutVolume(volume); return }
         if let a = Analysis.shared.cached(s) { adopt(a, level: level); return }
         spectrum = nil; levelDb = 0; setOutVolume(volume)
+        if level {
+            let a: SongAnalysis? = await withTaskGroup(of: SongAnalysis?.self) { g in
+                g.addTask { await Analysis.shared.load(s, url: url) }
+                g.addTask { try? await Task.sleep(nanoseconds: 1_500_000_000); return nil }
+                let first = await g.next()
+                g.cancelAll()
+                return first ?? nil
+            }
+            guard current?.id == s.id else { return }
+            if let a = a { adopt(a, level: level); return }
+        }
+        // too slow (or only the visualizer is on): carry on and adopt the result when it arrives
         Task {
             let a = await Analysis.shared.load(s, url: url)
             if current?.id == s.id, let a = a { adopt(a, level: level) }
         }
     }
 
+    private var enhancedChosen: Bool { UserDefaults.standard.bool(forKey: "enhancedEngine") }
+
     private func adopt(_ a: SongAnalysis, level: Bool) {
         spectrum = a
-        levelDb = level ? Analyzer.gain(a, canBoost: usingGE) : 0
+        levelDb = level ? Analyzer.gain(a, canBoost: enhancedChosen) : 0
         setOutVolume(volume)
     }
 
     /// the levelling or visualizer setting changed: apply it to the song that is playing
     func refreshAnalysis() {
         guard let s = current else { return }
-        beginAnalysis(s, url: playableURL(s) ?? s.url)
+        Task { await prepareLevel(s, url: playableURL(s) ?? s.url) }
     }
 
     /// reads the next song's analysis ahead of time, so there is no jump in volume when it starts
@@ -221,7 +237,7 @@ final class Player: ObservableObject {
         g.onEnd = { [weak self] in self?.ended() }
         g.onAdvance = { [weak self] in self?.advanceGapless() }
         ge = g
-        g.setVolume(volume); g.setRate(speed)
+        g.setVolume(volume); g.setRate(speed); g.setLevel(levelDb)
         if let d = AudioOutputs.shared.activeDevice { g.setOutputDevice(d.deviceID) }
         applyAudioSettings()
         return g
@@ -305,7 +321,9 @@ final class Player: ObservableObject {
             url = cached
         }
         guard current?.id == s.id else { return }
-        beginAnalysis(s, url: url)
+        await prepareLevel(s, url: url)
+        guard current?.id == s.id else { return }
+        warmAnalysis()
         if UserDefaults.standard.bool(forKey: "enhancedEngine") {
             let g = geEngine()
             avp.pause(); avp.replaceCurrentItem(with: nil)
