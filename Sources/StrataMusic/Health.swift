@@ -146,6 +146,12 @@ struct AdvancedSettings: View {
 
     var body: some View {
         Form {
+            Section("Shortcuts and scripts") {
+                Text("Strata answers to strata:// links, so the Shortcuts app (Open URL), Raycast, Alfred and the Terminal can control it.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text("strata://toggle · play · pause · next · previous · like · shuffle · repeat\nstrata://play?q=song or artist\nstrata://playlist?name=Road Trip&shuffle=1\nstrata://volume?level=0.5")
+                    .font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+            }
             Section("YouTube") {
                 HStack {
                     Button(health.running ? "Testing…" : "Test YouTube") { Task { await health.run() } }.disabled(health.running)

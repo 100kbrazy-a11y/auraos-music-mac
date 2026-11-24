@@ -13,7 +13,6 @@ struct RootView: View {
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
     @EnvironmentObject var updater: Updater
-    @ObservedObject var dl = Downloads.shared
     @AppStorage("leaves") private var leaves = true
     @AppStorage("season") private var seasonRaw = ""
     @State private var nav: Nav? = .home
@@ -27,10 +26,10 @@ struct RootView: View {
     @State private var searchMonitor: Any?
     @StateObject private var searchNav = SearchNav()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ObservedObject var grab = ArtistGrab.shared
+    @AppStorage("effects") private var effects = "full"
 
     /// the falling effect to draw (nil = none)
-    private var fx: Season? { reduceMotion ? nil : Season.resolve(seasonRaw, legacyLeaves: leaves) }
+    private var fx: Season? { reduceMotion || effects == "light" || ProcessInfo.processInfo.isLowPowerModeEnabled ? nil : Season.resolve(seasonRaw, legacyLeaves: leaves) }
 
     var body: some View {
         ZStack {
@@ -229,6 +228,20 @@ struct SearchDropdown: View {
     @AppStorage("liveYt") private var liveYt = true
     @State private var yt: [YtResult] = []
     @State private var ytBusy = false
+    @State private var hits = Hits()
+
+    private struct Hits { var songs: [Song] = []; var albums: [AlbumInfo] = []; var artists: [ArtistInfo] = [] }
+
+    /// matching thousands of songs is done off the main thread, a moment after the last key, using accent- and case-insensitive text
+    nonisolated private static func search(_ songs: [Song], _ albums: [AlbumInfo], _ artists: [ArtistInfo], _ q: String) -> Hits {
+        func fold(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+        let f = fold(q)
+        var h = Hits()
+        h.songs = songs.filter { fold($0.title).contains(f) || fold($0.artist).contains(f) || fold($0.album).contains(f) }
+        h.albums = albums.filter { fold($0.title).contains(f) || fold($0.artist).contains(f) }
+        h.artists = artists.filter { fold($0.id).contains(f) }
+        return h
+    }
 
     private var q: String { query.trimmingCharacters(in: .whitespaces) }
 
@@ -240,11 +253,7 @@ struct SearchDropdown: View {
 
     private func found() -> Found {
         var f = Found()
-        if !q.isEmpty {
-            f.songs = lib.songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
-            f.albums = lib.albums.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) }
-            f.artists = lib.artists.filter { $0.id.localizedCaseInsensitiveContains(q) }
-        }
+        if !q.isEmpty { f.songs = hits.songs; f.albums = hits.albums; f.artists = hits.artists }
         f.shownSongs = Array(f.songs.prefix(6)); f.shownAlbums = Array(f.albums.prefix(3)); f.shownArtists = Array(f.artists.prefix(3)); f.shownYt = Array(yt.prefix(5))
         let all = f.songs
         for s in f.shownSongs { f.actions.append { openSong(s, all) } }
@@ -322,6 +331,14 @@ struct SearchDropdown: View {
         .glass(18)
         .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
         .task(id: q) { await searchYouTube() }
+        .task(id: q) {
+            guard !q.isEmpty else { hits = Hits(); return }
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            if Task.isCancelled { return }
+            let songs = lib.songs, albums = lib.albums, artists = lib.artists, query = q
+            let r = await Task.detached(priority: .userInitiated) { Self.search(songs, albums, artists, query) }.value
+            if !Task.isCancelled { hits = r }
+        }
     }
 
     private func setActions(_ a: [() -> Void]) { nav.actions = a }

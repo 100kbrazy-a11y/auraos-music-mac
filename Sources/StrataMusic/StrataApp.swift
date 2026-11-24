@@ -18,7 +18,10 @@ struct StrataApp: App {
                 .environmentObject(updater)
                 .frame(minWidth: 980, minHeight: 640)
                 .preferredColorScheme(.dark)
-                .onOpenURL { url in lib.importURLs([url], thenPlay: true) }
+                .onOpenURL { url in
+                    if url.scheme == "strata" { URLCommands.handle(url, lib: lib, player: player) }
+                    else { lib.importURLs([url], thenPlay: true) }
+                }
                 .task {
                     // when the app opens, then every few hours while it stays open
                     while !Task.isCancelled {

@@ -22,6 +22,11 @@ struct FullPlayerView: View {
             .padding(.top, 96).padding(.bottom, 92)
 
             VStack {
+                Spacer()
+                SpectrumView(height: 110).opacity(page == 0 ? 0.25 : 0.55).padding(.horizontal, 40).padding(.bottom, 80)
+            }.allowsHitTesting(false)
+
+            VStack {
                 HStack {
                     Button { close() } label: {
                         Image(systemName: "chevron.down").font(.system(size: 16, weight: .bold)).frame(width: 46, height: 46)
@@ -49,6 +54,17 @@ struct FullPlayerView: View {
     }
 }
 
+/// the order of the player's three pages (Lyrics 0, Current Song 1, Artist 2), kept as text like "1,0,2"
+enum PlayerPages {
+    static func parse(_ s: String) -> [Int] {
+        var out: [Int] = []
+        for p in s.split(separator: ",") { if let i = Int(p), (0...2).contains(i), !out.contains(i) { out.append(i) } }
+        for i in 0...2 where !out.contains(i) { out.append(i) }
+        return out
+    }
+    static func text(_ a: [Int]) -> String { a.map(String.init).joined(separator: ",") }
+}
+
 extension Notification.Name { static let playerPage = Notification.Name("strata.playerPage") }
 
 /// Lyrics · Current Song · Artist: the dock's tab bar, shrunk into a pill
@@ -56,10 +72,11 @@ struct TabPill: View {
     @Binding var page: Int
     @Namespace private var ns
     private let items: [(String, String)] = [("Lyrics", "quote.bubble"), ("Current Song", "music.note"), ("Artist", "person.crop.circle")]
+    @AppStorage("playerPages") private var order = "0,1,2"
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(PlayerPages.parse(order), id: \.self) { i in
                 Button {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = i }
                 } label: {
@@ -149,7 +166,7 @@ struct ExtraControls: View {
             Button { player.cycleRepeat() } label: { Image(systemName: player.repeatMode == 2 ? "repeat.1" : "repeat").foregroundStyle(player.repeatMode > 0 ? player.accent : Color.white.opacity(0.7)) }
             Spacer()
             if pbSpeed { SpeedButton().foregroundStyle(.white.opacity(0.7)) }
-            if pbRoute { RoutePicker().frame(width: 24, height: 24) }
+            if pbRoute { OutputButton(); RoutePicker().frame(width: 24, height: 24) }
             if pbSleep { SleepButton().foregroundStyle(.white.opacity(0.7)) }
             if pbQueue { QueueButton(scope: .player).foregroundStyle(.white.opacity(0.7)) }
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))
@@ -253,17 +270,17 @@ struct LyricsPage: View {
     }
 }
 
+/// the list of lyrics redraws only when the line being sung changes; only the lit line follows the clock
 struct SyncedLyrics: View {
     @ObservedObject var store: LyricsStore
-    @ObservedObject var clock: Clock
+    let clock: Clock
     @EnvironmentObject var player: Player
     @AppStorage("lyricsWords") private var wordMode = true
     @AppStorage("lyricsRomanize") private var romanize = false
     @AppStorage("lyricsTranslate") private var translate = false
+    @State private var cur = -1
 
     var body: some View {
-        let cur = store.index(at: clock.position)
-        let t = clock.position + 0.2 - store.offset
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -271,13 +288,16 @@ struct SyncedLyrics: View {
                     ForEach(store.lines) { l in
                         let on = l.id == cur
                         VStack(alignment: .leading, spacing: 4) {
-                            LyricLineText(line: l, t: t, active: on, words: wordMode).font(.system(size: 34, weight: .heavy))
+                            if on && wordMode && !l.words.isEmpty {
+                                LiveLine(line: l, clock: clock, offset: store.offset).font(.system(size: 34, weight: .heavy))
+                            } else {
+                                LyricLineText(line: l, t: 0, active: false, words: false).font(.system(size: 34, weight: .heavy))
+                            }
                             if romanize, let r = LyricsFilter.romanize(l.text) { Text(LyricsFilter.clean(r)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
                             if translate, let tr = store.translated[l.id] { Text(LyricsFilter.clean(tr)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
                         }
                         .foregroundStyle(Color.white.opacity(on ? 1 : (l.id < cur ? 0.28 : 0.4)))
                         .scaleEffect(on ? 1 : 0.94, anchor: .leading)
-                        .blur(radius: on ? 0 : 0.6)
                         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: on)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
@@ -290,6 +310,11 @@ struct SyncedLyrics: View {
                 .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity)
             }
+            .onReceive(clock.$position) { p in
+                let i = store.index(at: p)
+                if i != cur { cur = i }
+            }
+            .onAppear { cur = store.index(at: clock.position) }
             .onChange(of: cur) { i in
                 guard i >= 0 else { return }
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { proxy.scrollTo(i, anchor: UnitPoint(x: 0.5, y: 0.35)) }
@@ -297,6 +322,14 @@ struct SyncedLyrics: View {
         }
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
     }
+}
+
+/// the line being sung, lit word by word
+private struct LiveLine: View {
+    let line: LyricLine
+    @ObservedObject var clock: Clock
+    let offset: Double
+    var body: some View { LyricLineText(line: line, t: clock.position + 0.2 - offset, active: true, words: true) }
 }
 
 // MARK: - Artist

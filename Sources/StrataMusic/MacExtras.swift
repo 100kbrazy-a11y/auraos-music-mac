@@ -104,9 +104,7 @@ struct MiniPlayerView: View {
         GeometryReader { g in
             let compact = g.size.height < 150
             ZStack {
-                if let img = Covers.image(player.current, maxPixel: 300) {
-                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).blur(radius: 40).scaleEffect(1.4).frame(width: g.size.width, height: g.size.height).clipped()
-                }
+                SoftCover(song: player.current).frame(width: g.size.width, height: g.size.height).clipped()
                 Rectangle().fill(.ultraThinMaterial)
                 if let s = player.current {
                     if compact { strip(s, g.size) } else { square(s, g.size) }
@@ -220,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let crashed = CrashGuard.begin()
         HangWatch.start()
         MusicPack.cleanup()
+        AppIcons.applySaved()
         if crashed { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Diagnostics.askAfterCrash() } }
         songWatcher = Player.shared.$current.dropFirst().removeDuplicates { $0?.id == $1?.id }.sink { song in
             Task { @MainActor in Notifier.songChanged(song) }

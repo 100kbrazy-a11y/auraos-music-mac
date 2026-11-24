@@ -59,6 +59,7 @@ final class Player: ObservableObject {
                 self.tickPosition(s)
             }
         }
+        avp.audioOutputDeviceUniqueID = AudioOutputs.shared.activeDevice?.uid
         setupRemote()
     }
 
@@ -148,7 +149,66 @@ final class Player: ObservableObject {
 
     // MARK: transport
 
-    private func setOutVolume(_ v: Float) { avp.volume = v; ge?.setVolume(v) }
+    private func setOutVolume(_ v: Float) {
+        // the standard player can only be turned down, so a positive levelling gain only applies on the enhanced engine
+        avp.volume = v * powf(10, min(0, levelDb) / 20)
+        ge?.setVolume(v); ge?.setLevel(levelDb)
+    }
+
+    // MARK: volume levelling and the visualizer
+
+    /// the analysis of the song that is playing (its spectrum drives the visualizer)
+    @Published private(set) var spectrum: SongAnalysis?
+    private(set) var levelDb: Float = 0
+
+    private func beginAnalysis(_ s: Song, url: URL) {
+        let d = UserDefaults.standard
+        let level = d.object(forKey: "levelVolume") as? Bool ?? true
+        let viz = (d.string(forKey: "visualizer") ?? "bars") != "off"
+        guard level || viz else { spectrum = nil; levelDb = 0; setOutVolume(volume); return }
+        if let a = Analysis.shared.cached(s) { adopt(a, level: level); return }
+        spectrum = nil; levelDb = 0; setOutVolume(volume)
+        Task {
+            let a = await Analysis.shared.load(s, url: url)
+            if current?.id == s.id, let a = a { adopt(a, level: level) }
+        }
+    }
+
+    private func adopt(_ a: SongAnalysis, level: Bool) {
+        spectrum = a
+        levelDb = level ? Analyzer.gain(a, canBoost: usingGE) : 0
+        setOutVolume(volume)
+    }
+
+    /// the levelling or visualizer setting changed: apply it to the song that is playing
+    func refreshAnalysis() {
+        guard let s = current else { return }
+        beginAnalysis(s, url: playableURL(s) ?? s.url)
+    }
+
+    /// reads the next song's analysis ahead of time, so there is no jump in volume when it starts
+    private func warmAnalysis() {
+        guard let i = nextIndex() else { return }
+        let s = queue[i]
+        guard Analysis.shared.cached(s) == nil, let u = playableURL(s) else { return }
+        Task { _ = await Analysis.shared.load(s, url: u) }
+    }
+
+    /// the output chosen in the player or in settings
+    func applyOutputDevice() {
+        let out = AudioOutputs.shared
+        let dev = out.activeDevice
+        avp.audioOutputDeviceUniqueID = dev?.uid
+        if let g = ge {
+            let ok = g.setOutputDevice(dev?.deviceID)
+            if !ok { EngineLog.shared.add("Couldn't switch the enhanced engine's output") }
+            if ok, usingGE, let s = current, isPlaying {
+                // the engine restarts on the new device; carry on from where the song was
+                let pos = clock.position
+                Task { await start(s, autoplay: true); seek(to: pos) }
+            }
+        }
+    }
     private func engPlay() { if usingGE { ge?.play() } else { avp.play(); if speed != 1 { avp.rate = speed } } }
     private func engPause() { if usingGE { ge?.pause() } else { avp.pause() } }
 
@@ -160,6 +220,7 @@ final class Player: ObservableObject {
         g.onAdvance = { [weak self] in self?.advanceGapless() }
         ge = g
         g.setVolume(volume); g.setRate(speed)
+        if let d = AudioOutputs.shared.activeDevice { g.setOutputDevice(d.deviceID) }
         applyAudioSettings()
         return g
     }
@@ -191,6 +252,7 @@ final class Player: ObservableObject {
 
     /// lets the enhanced engine open the next song ahead of time
     private func refreshPreload() {
+        warmAnalysis()
         guard usingGE, let g = ge else { return }
         guard let i = nextIndex(), let u = playableURL(queue[i]) else { g.preload(nil); return }
         let same = current.map { $0.albumKey == queue[i].albumKey && !$0.album.isEmpty } ?? false
@@ -207,6 +269,7 @@ final class Player: ObservableObject {
         UserDefaults.standard.set(s.id, forKey: "lastSong")
         updateAccent(s)
         clock.position = 0
+        if let a = Analysis.shared.cached(s) { adopt(a, level: UserDefaults.standard.object(forKey: "levelVolume") as? Bool ?? true) } else { spectrum = nil; levelDb = 0; setOutVolume(volume) }
         pushNowPlaying(); pushDiscord()
         refreshPreload()
     }
@@ -240,6 +303,7 @@ final class Player: ObservableObject {
             url = cached
         }
         guard current?.id == s.id else { return }
+        beginAnalysis(s, url: url)
         if UserDefaults.standard.bool(forKey: "enhancedEngine") {
             let g = geEngine()
             avp.pause(); avp.replaceCurrentItem(with: nil)

@@ -143,7 +143,9 @@ final class Downloads: ObservableObject {
                 defer { try? FileManager.default.removeItem(at: tmp) }
                 upd(id) { $0.status = "Downloading…" }
                 let meter = SpeedMeter()
+                let throttle = ProgressThrottle()
                 try await fetch(src, to: tmp) { [weak self] got, total in
+                    guard throttle.allow(done: got == total && total > 0) else { return }
                     Task { @MainActor in
                         let speed = meter.tick(got)
                         self?.upd(id) { $0.bytes = got; $0.size = total; $0.frac = total > 0 ? min(1, Double(got) / Double(total)) : 0; $0.speed = speed }
@@ -297,5 +299,17 @@ final class Downloads: ObservableObject {
         ex.metadata = items
         await ex.export()
         if ex.status != .completed { throw ex.error ?? YtError("The file couldn't be tagged") }
+    }
+}
+
+/// lets a progress callback through a few times a second instead of for every chunk of data
+final class ProgressThrottle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date.distantPast
+    func allow(done: Bool) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let now = Date()
+        if done || now.timeIntervalSince(last) >= 0.25 { last = now; return true }
+        return false
     }
 }

@@ -8,10 +8,14 @@ final class AppActive: ObservableObject {
     @Published private(set) var active = true
     private init() {
         let c = NotificationCenter.default
-        c.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.active = true }
-        c.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.active = false }
-        c.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: .main) { [weak self] _ in self?.active = false }
-        c.addObserver(forName: NSApplication.didUnhideNotification, object: nil, queue: .main) { [weak self] _ in self?.active = true }
+        for n in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSApplication.didHideNotification, NSApplication.didUnhideNotification, NSApplication.didFinishLaunchingNotification] {
+            c.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.recompute() } }
+        }
+    }
+    /// animations run while some window of the app can actually be seen
+    private func recompute() {
+        let seen = !NSApp.isHidden && NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) }
+        if seen != active { active = seen }
     }
 }
 
@@ -81,7 +85,7 @@ struct FallingLeaves: View {
     private static let rib: Path = { var p = Path(); p.move(to: CGPoint(x: 0, y: -11)); p.addLine(to: CGPoint(x: 0, y: 14)); return p }()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !act.active)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !act.active)) { tl in
             Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate

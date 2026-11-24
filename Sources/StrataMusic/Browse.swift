@@ -25,47 +25,13 @@ struct SongTable: View {
     /// sorting thousands of titles with the system's string rules takes a while, so it's done away from the main thread, and only when something it depends on changed
     @State private var sortedList: [Song] = []
 
-    private struct SortKey: Equatable { var sig: Int; var search: String; var order: String }
+    private struct SortKey: Equatable { var count: Int; var first: String; var last: String; var revision: Int; var search: String; var order: String }
     private var sortKey: SortKey {
-        var h = Hasher()
-        h.combine(songs.count)
-        for s in songs { h.combine(s.id); h.combine(s.title); h.combine(s.artist); h.combine(s.album); h.combine(s.plays); h.combine(s.duration); h.combine(s.added) }
-        return SortKey(sig: h.finalize(), search: search, order: order.map { "\(String(describing: $0.keyPath))\($0.order)" }.joined(separator: ","))
+        SortKey(count: songs.count, first: songs.first?.id ?? "", last: songs.last?.id ?? "", revision: lib.revision, search: search,
+                order: order.map { "\(String(describing: $0.keyPath))\($0.order)" }.joined(separator: ","))
     }
 
-    /// one song drags out as its file; a selection of several drags out as a music pack
-    private func dragProvider(_ s: Song, _ list: [Song]) -> NSItemProvider {
-        if selection.contains(s.id), selection.count > 1 {
-            let picked = list.filter { selection.contains($0.id) }
-            if picked.count > 1 { return SongDrag.provider(picked, name: "Strata Pack") }
-        }
-        return SongDrag.provider([s], name: s.title)
-    }
-
-    private static func filtered(_ songs: [Song], _ search: String) -> [Song] {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty ? songs : songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
-    }
-
-    var body: some View {
-        let list = sortedList.isEmpty ? Self.filtered(songs, search) : sortedList
-        Table(list, selection: $selection, sortOrder: $order) {
-            TableColumn("Title", value: \.title) { s in
-                HStack(spacing: 10) {
-                    CoverView(song: s, size: CGFloat(listCover), radius: 6)
-                    Text(s.title).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)
-                    if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
-                    if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
-                }
-                .contentShape(Rectangle())
-                .onDrag { dragProvider(s, list) }
-            }
-            TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Plays") { s in Text((s.plays ?? 0) > 0 ? "\(s.plays!)" : "").monospacedDigit().foregroundStyle(.secondary) }.width(44)
-            TableColumn("Time", value: \.duration) { s in Text(fmtTime(s.duration)).monospacedDigit().foregroundStyle(.secondary) }.width(56)
-        }
-        .contextMenu(forSelectionType: String.self) { ids in
+    @ViewBuilder private func menu(_ ids: Set<String>, _ list: [Song]) -> some View {
             let picked = ids.compactMap { lib.byID[$0] }
             if let first = picked.first {
                 Button("Play") { player.play(first, in: list) }
@@ -88,7 +54,53 @@ struct SongTable: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(picked.map { $0.url }) }
                 Button("Remove from Library", role: .destructive) { lib.remove(Set(ids)) }
             }
-        } primaryAction: { ids in
+    }
+
+    /// one song drags out as its file; a selection of several drags out as a music pack
+    private func dragProvider(_ s: Song, _ list: [Song]) -> NSItemProvider {
+        if selection.contains(s.id), selection.count > 1 {
+            let picked = list.filter { selection.contains($0.id) }
+            if picked.count > 1 { return SongDrag.provider(picked, name: "Strata Pack") }
+        }
+        return SongDrag.provider([s], name: s.title)
+    }
+
+    private static func filtered(_ songs: [Song], _ search: String) -> [Song] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? songs : songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
+    }
+
+    @AppStorage("songsLayout") private var layout = "table"
+
+    private func listRows(_ list: [Song]) -> some View {
+        List(list, selection: $selection) { s in
+            HStack(spacing: 12) {
+                CoverView(song: s, size: 46, radius: 7)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(s.title).font(.system(size: 14, weight: .medium)).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)
+                        if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
+                        if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
+                    }
+                    Text(s.shownArtist + (s.album.isEmpty ? "" : " · " + s.album)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Text(fmtTime(s.duration)).monospacedDigit().font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+            .onDrag { dragProvider(s, list) }
+        }
+    }
+
+    @ViewBuilder private func content(_ list: [Song]) -> some View {
+        if layout == "list" { listRows(list) } else { tableView(list) }
+    }
+
+    var body: some View {
+        let list = sortedList.isEmpty ? Self.filtered(songs, search) : sortedList
+        content(list)
+        .contextMenu(forSelectionType: String.self) { ids in menu(ids, list) } primaryAction: { ids in
             if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
         }
         .scrollContentBackground(.hidden)
@@ -97,9 +109,36 @@ struct SongTable: View {
             let result = await Task.detached(priority: .userInitiated) { Self.filtered(snapshot, q).sorted(using: ord) }.value
             if !Task.isCancelled { sortedList = result }
         }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Picker("Layout", selection: $layout) {
+                    Image(systemName: "tablecells").tag("table")
+                    Image(systemName: "list.bullet").tag("list")
+                }.pickerStyle(.segmented).help("Table or list")
+            }
+        }
         .sheet(item: $exporting) { ExportSheet(song: $0) }
         .sheet(item: $editing) { EditInfoSheet(song: $0) }
         .overlay { if songs.isEmpty { EmptyLibrary() } }
+    }
+
+    private func tableView(_ list: [Song]) -> some View {
+        Table(list, selection: $selection, sortOrder: $order) {
+            TableColumn("Title", value: \.title) { s in
+                HStack(spacing: 10) {
+                    CoverView(song: s, size: CGFloat(listCover), radius: 6)
+                    Text(s.title).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)
+                    if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
+                    if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
+                }
+                .contentShape(Rectangle())
+                .onDrag { dragProvider(s, list) }
+            }
+            TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary) }
+            TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary) }
+            TableColumn("Plays") { s in Text((s.plays ?? 0) > 0 ? "\(s.plays!)" : "").monospacedDigit().foregroundStyle(.secondary) }.width(44)
+            TableColumn("Time", value: \.duration) { s in Text(fmtTime(s.duration)).monospacedDigit().foregroundStyle(.secondary) }.width(56)
+        }
     }
 }
 
@@ -342,7 +381,7 @@ struct ArtistDetail: View {
 
     private func fallbackBanner(_ a: ArtistInfo) -> some View {
         ZStack {
-            if let img = Covers.image(a.cover, maxPixel: 600) { Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).blur(radius: 40).scaleEffect(1.3) }
+            SoftCover(song: a.cover)
             Color.black.opacity(0.25)
         }
         .background(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))

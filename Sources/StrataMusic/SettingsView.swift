@@ -75,6 +75,8 @@ struct PlaybackSettings: View {
     @AppStorage("enhancedEngine") private var enhanced = false
     @AppStorage("crossfade") private var crossfade = 0.0
     @AppStorage("eqPreset") private var preset = "Flat"
+    @AppStorage("levelVolume") private var level = true
+    @ObservedObject private var outputs = AudioOutputs.shared
     @State private var gains: [Double] = (UserDefaults.standard.array(forKey: "eqGains") as? [Double]) ?? Array(repeating: 0, count: 10)
     private let labels = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
 
@@ -88,6 +90,14 @@ struct PlaybackSettings: View {
                 .pickerStyle(.segmented)
                 Text(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
                     .font(.callout).foregroundStyle(.secondary)
+            }
+            Section("Sound") {
+                Toggle("Level the volume between songs", isOn: $level)
+                Text("Each song is measured once, then played at a common level so a quiet song isn't followed by a loud one. The standard engine can only turn loud songs down; the enhanced engine can also lift quiet ones a little.").font(.callout).foregroundStyle(.secondary)
+                Picker("Output", selection: $outputs.selected) {
+                    Text("System Default").tag("")
+                    ForEach(outputs.devices) { Text($0.name).tag($0.uid) }
+                }
             }
             Section("Enhanced engine") {
                 HStack { Text("Crossfade"); Slider(value: $crossfade, in: 0...12, step: 1); Text(crossfade == 0 ? "Off" : "\(Int(crossfade)) s").monospacedDigit().frame(width: 36, alignment: .trailing) }
@@ -107,6 +117,7 @@ struct PlaybackSettings: View {
             .disabled(!enhanced)
         }
         .formStyle(.grouped).scrollContentBackground(.hidden)
+        .onChange(of: level) { _ in Player.shared.refreshAnalysis() }
         .onChange(of: enhanced) { _ in Player.shared.applyAudioSettings() }
         .onChange(of: crossfade) { _ in Player.shared.applyAudioSettings() }
         .onChange(of: preset) { _ in Player.shared.applyAudioSettings() }

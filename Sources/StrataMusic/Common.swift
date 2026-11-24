@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreImage
 import AppKit
 import ImageIO
 
@@ -120,6 +121,46 @@ enum Covers {
         let c = await Task.detached(priority: .userInitiated) { computeAccent(u) }.value
         lock.lock(); accents[s.cover] = c; lock.unlock()
         return c
+    }
+}
+
+extension Covers {
+    static let softCache = NSCache<NSString, NSImage>()
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
+    static func cachedSoft(_ s: Song?) -> NSImage? { s.flatMap { softCache.object(forKey: $0.cover as NSString) } }
+
+    /// a blurred, colourful copy of the cover for backgrounds. The blur is done once on a small picture; drawing it larger keeps it soft,
+    /// so the window never has to blur anything while it animates.
+    static func soft(_ s: Song?) async -> NSImage? {
+        guard let s = s, let u = url(s) else { return nil }
+        if let c = softCache.object(forKey: s.cover as NSString) { return c }
+        let img: NSImage? = await Task.detached(priority: .utility) { () -> NSImage? in
+            guard let src = CGImageSourceCreateWithURL(u as CFURL, nil),
+                  let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 96] as CFDictionary) else { return nil }
+            let input = CIImage(cgImage: cg)
+            let blurred = input.clampedToExtent().applyingGaussianBlur(sigma: 7).cropped(to: input.extent)
+            let tuned = blurred.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35, kCIInputBrightnessKey: -0.04])
+            guard let out = ciContext.createCGImage(tuned, from: input.extent) else { return nil }
+            return NSImage(cgImage: out, size: NSSize(width: out.width, height: out.height))
+        }.value
+        if let img = img { softCache.setObject(img, forKey: s.cover as NSString) }
+        return img
+    }
+}
+
+/// a soft, blurred version of a cover that fills whatever space it is given
+struct SoftCover: View {
+    let song: Song?
+    @State private var img: NSImage?
+
+    var body: some View {
+        Group {
+            if let i = img ?? Covers.cachedSoft(song) {
+                Image(nsImage: i).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+            } else { Color.clear }
+        }
+        .task(id: song?.cover ?? "") { img = await Covers.soft(song) }
     }
 }
 

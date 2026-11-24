@@ -94,6 +94,7 @@ struct DetailEffect: View {
 
 struct SnowFall: View {
     var area: CGSize? = nil
+    @ObservedObject private var act = AppActive.shared
     private struct Flake { var x: Double; var speed: Double; var size: Double; var phase: Double; var sway: Double; var alpha: Double }
     private static let flakes: [Flake] = {
         var g = SeededGen(state: 77)
@@ -103,7 +104,7 @@ struct SnowFall: View {
         }
     }()
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !act.active)) { tl in
             Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
@@ -123,6 +124,7 @@ struct SnowFall: View {
 
 struct PetalFall: View {
     var area: CGSize? = nil
+    @ObservedObject private var act = AppActive.shared
     private struct Petal { var x: Double; var speed: Double; var size: Double; var phase: Double; var sway: Double; var rot: Double; var spin: Double; var color: Color }
     private static let petals: [Petal] = {
         var g = SeededGen(state: 305)
@@ -142,7 +144,7 @@ struct PetalFall: View {
         return p
     }()
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !act.active)) { tl in
             Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
@@ -170,6 +172,7 @@ struct PetalFall: View {
 struct PlayerBackdrop: View {
     var accent: Color
     var song: Song?
+    @ObservedObject private var act = AppActive.shared
     @AppStorage("bgStyle") private var style = "aurora"
 
     var body: some View {
@@ -177,16 +180,14 @@ struct PlayerBackdrop: View {
         case "cover":
             ZStack {
                 Color.black
-                if let img = Covers.image(song, maxPixel: 500) {
-                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).blur(radius: 70).saturation(1.3).scaleEffect(1.35)
-                } else { accent.opacity(0.4) }
+                SoftCover(song: song).scaleEffect(1.1)
                 Color.black.opacity(0.42)
             }
             .clipped()
         case "plain":
             Color(red: 0.05, green: 0.05, blue: 0.06)
         case "gradient":
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { tl in
+            TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: !act.active)) { tl in
                 let a = tl.date.timeIntervalSinceReferenceDate * 0.06
                 LinearGradient(colors: [accent.opacity(0.9), Color(red: 0.04, green: 0.04, blue: 0.06), accent.opacity(0.5)],
                                startPoint: UnitPoint(x: 0.5 + 0.5 * cos(a), y: 0.5 + 0.5 * sin(a)),
@@ -221,6 +222,19 @@ struct LookSettings: View {
     @AppStorage("listCover") private var listCover = 34.0
     @AppStorage("season") private var season = ""
     @AppStorage("leaves") private var legacyLeaves = true
+    @AppStorage("playerPages") private var playerPages = "0,1,2"
+    @AppStorage("songsLayout") private var songsLayout = "table"
+    @AppStorage("visualizer") private var visualizer = "bars"
+    @AppStorage("appIcon") private var appIcon = "original"
+    @AppStorage("effects") private var effects = "full"
+    private let pageNames = ["Lyrics", "Current Song", "Artist"]
+
+    private func movePage(_ p: Int, _ by: Int) {
+        var a = PlayerPages.parse(playerPages)
+        guard let i = a.firstIndex(of: p), a.indices.contains(i + by) else { return }
+        a.swapAt(i, i + by)
+        playerPages = PlayerPages.text(a)
+    }
 
     private let swatches = ["#9E80FF", "#FF5E7E", "#FF8A3D", "#F5C542", "#4FD18B", "#3FC1E8", "#4C7DFF", "#C2C2CC"]
 
@@ -271,13 +285,49 @@ struct LookSettings: View {
                 Toggle("Up Next button", isOn: $pbQueue)
                 Toggle("Export button", isOn: $pbExport)
             }
+            Section("Player pages") {
+                ForEach(PlayerPages.parse(playerPages), id: \.self) { p in
+                    HStack {
+                        Text(pageNames[p])
+                        Spacer()
+                        Button { movePage(p, -1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.borderless)
+                        Button { movePage(p, 1) } label: { Image(systemName: "chevron.down") }.buttonStyle(.borderless)
+                    }
+                }
+                Picker("Visualizer", selection: $visualizer) {
+                    Text("Bars").tag("bars"); Text("Mirrored").tag("mirror"); Text("Off").tag("off")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: visualizer) { _ in Player.shared.refreshAnalysis() }
+            }
             Section("Media bar") {
                 Toggle("Compact (no seek bar, smaller cover)", isOn: $barCompact)
                 Toggle("Like button", isOn: $barHeart)
                 Toggle("Up Next button", isOn: $barQueue)
             }
+            Section("App icon") {
+                HStack(spacing: 10) {
+                    ForEach(AppIcons.variants) { v in
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(LinearGradient(colors: [Color(red: v.dark.0, green: v.dark.1, blue: v.dark.2), Color(red: v.dark.0 * 0.6, green: v.dark.1 * 0.6, blue: v.dark.2 * 0.6)], startPoint: .top, endPoint: .bottom))
+                                .overlay(Image(systemName: "music.note").foregroundStyle(Color(red: v.light.0, green: v.light.1, blue: v.light.2)))
+                                .frame(width: 40, height: 40)
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white, lineWidth: appIcon == v.id ? 2 : 0))
+                            Text(v.name).font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                        .onTapGesture { appIcon = v.id; AppIcons.apply(v.id) }
+                    }
+                }
+                Text("Changes the Dock icon while Strata is open. macOS keeps showing the app file's own icon when it's closed.").font(.callout).foregroundStyle(.secondary)
+            }
             Section("Lists") {
+                Picker("Songs layout", selection: $songsLayout) { Text("Table").tag("table"); Text("List").tag("list") }.pickerStyle(.segmented)
                 HStack { Text("Cover size in lists"); Slider(value: $listCover, in: 24...60, step: 2); Text("\(Int(listCover))").monospacedDigit().frame(width: 40, alignment: .trailing) }
+            }
+            Section("Performance") {
+                Picker("Animated effects", selection: $effects) { Text("Full").tag("full"); Text("Light").tag("light") }.pickerStyle(.segmented)
+                Text("Light turns off the falling seasonal effect. It is also off automatically in Low Power Mode and while the window is hidden.").font(.callout).foregroundStyle(.secondary)
             }
             Section("Seasons") {
                 Picker("Falling effect", selection: Binding(get: { season.isEmpty ? (legacyLeaves ? "autumn" : "off") : season }, set: { season = $0 })) {

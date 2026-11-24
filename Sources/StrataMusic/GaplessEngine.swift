@@ -1,5 +1,7 @@
 import Foundation
 import AVFoundation
+import CoreAudio
+import AudioToolbox
 
 /// The "Enhanced" playback engine: two player nodes on an AVAudioEngine. The next song is opened ahead of time and started at the
 /// exact moment the current one ends (gapless), or a little earlier with a volume cross-over (crossfade). It also carries the
@@ -59,6 +61,26 @@ final class GaplessEngine {
     func setGains(_ g: [Float]) { for (i, b) in eq.bands.enumerated() where i < g.count { b.gain = g[i] } }
     func setRate(_ r: Float) { pitch.rate = max(0.5, min(2, r)) }
     func setVolume(_ v: Float) { engine.mainMixerNode.outputVolume = v }
+    /// volume levelling: lifts or lowers the whole song by [db]
+    func setLevel(_ db: Float) { eq.globalGain = max(-24, min(24, db)) }
+
+    /// plays through one particular output (nil = the Mac's default). Returns false when the engine wouldn't take it.
+    @discardableResult
+    func setOutputDevice(_ id: AudioDeviceID?) -> Bool {
+        guard let unit = engine.outputNode.audioUnit else { return false }
+        var dev: AudioDeviceID
+        if let id = id { dev = id } else {
+            var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+            dev = 0
+            guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr else { return false }
+        }
+        let was = engine.isRunning
+        if was { engine.stop() }
+        let r = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &dev, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if was { engine.prepare(); try? engine.start() }
+        return r == noErr
+    }
 
     // MARK: loading and moving
 
@@ -138,7 +160,7 @@ final class GaplessEngine {
 
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
     }

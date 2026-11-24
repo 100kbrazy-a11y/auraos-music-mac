@@ -2,6 +2,19 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.3.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Much lighter: the whole window no longer redraws on every download progress tick, lyrics only redraw the line being sung, searching no longer stalls while you type, backgrounds use a pre-blurred picture instead of blurring the window every frame, and animations pause when the window can't be seen",
+    "Volume levelling: songs are measured once and played at a common level (Settings › Playback)",
+    "A visualizer in the full player (bars or mirrored), drawn from each song's measured spectrum",
+    "Output device picker: choose the speakers or headphones from the player or from Settings › Playback",
+    "Choose the order of the player's pages, a list layout for songs (and a table/list switch in the toolbar), and Dock icon colours",
+    "strata:// links so Shortcuts, Raycast and scripts can play, pause, skip, like and start playlists (Settings › Advanced). Real Siri and widget support still needs an Xcode project"
+   ]
+  },
+  {
    "version": "2.2.0",
    "name": "The Macster Update",
    "date": "2026-11-24",
