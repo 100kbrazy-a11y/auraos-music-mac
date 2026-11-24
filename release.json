@@ -2,6 +2,19 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.1.0",
+   "name": "The Thanksgiving Update",
+   "date": "2026-11-23",
+   "notes": [
+    "YouTube downloading: search YouTube Music (songs, albums, playlists, artists) or paste a link, then download. Songs are saved as tagged M4A files with their cover and appear in your library",
+    "A Downloads page with progress and speed, and a Downloads tab in Settings (folder, how many at once). Settings is also in the sidebar now",
+    "Search: click the search box and the page dims and a list of matches drops down as you type, with a 'Not showing up? Search the web' button on top that looks it up on YouTube",
+    "The falling leaves are one layer for the whole window, so opening the player no longer restarts or speeds them up",
+    "The full-screen player hides the sidebar button and the window title",
+    "New: Up Next queue, sleep timer, Recently Added, Go to Album / Go to Artist, and Command-F for search"
+   ]
+  },
+  {
    "version": "1.0.2",
    "name": "The Thanksgiving Update",
    "date": "2026-11-23",
