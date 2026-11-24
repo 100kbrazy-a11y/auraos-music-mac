@@ -3,7 +3,7 @@
 # It runs the word-timing model (Sources/COnnx). Safe to run again; it does nothing when the files are already there.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="${ORT_VERSION:-1.24.2}"
+VER="${ORT_VERSION:-1.23.2}"
 DEST="vendor/onnxruntime"
 if [ -f "$DEST/lib/libonnxruntime.$VER.dylib" ] && [ -f "$DEST/include/onnxruntime_c_api.h" ]; then exit 0; fi
 TMP="$(mktemp -d)"
