@@ -61,7 +61,7 @@ enum Roman {
     static func tokenise(_ s: String, locale: String) -> [(range: NSRange, latin: String)] {
         let cf = s as CFString
         let len = CFStringGetLength(cf)
-        guard len > 0, let tok = CFStringTokenizerCreate(kCFAllocatorDefault, cf, CFRange(location: 0, length: len), kCFStringTokenizerUnitWord, CFLocaleCreate(kCFAllocatorDefault, locale as CFString)) else { return [] }
+        guard len > 0, let tok = CFStringTokenizerCreate(kCFAllocatorDefault, cf, CFRange(location: 0, length: len), kCFStringTokenizerUnitWord, CFLocaleCreate(kCFAllocatorDefault, CFLocaleIdentifier(rawValue: locale as CFString))) else { return [] }
         var out: [(NSRange, String)] = []
         while CFStringTokenizerAdvanceToNextToken(tok) != [] {
             let r = CFStringTokenizerGetCurrentTokenRange(tok)
@@ -127,7 +127,7 @@ enum PCM16k {
                 return inBuf
             }
             if let c = outBuf.floatChannelData?[0], outBuf.frameLength > 0 {
-                samples.append(contentsOf: UnsafeBufferPointer(start: c, length: Int(outBuf.frameLength)))
+                samples.append(contentsOf: UnsafeBufferPointer(start: c, count: Int(outBuf.frameLength)))
             }
             if status == .error { throw err ?? AlignError("This file's audio can't be converted") }
             if status == .endOfStream { break }

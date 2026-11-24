@@ -68,8 +68,8 @@ final class WordSync: ObservableObject {
     private var tried: Set<String> = []
 
     init() {
-        let size = (try? FileManager.default.attributesOfItem(atPath: Self.modelFile.path)[.size] as? Int64) ?? 0
-        if let size, size > 300_000_000 { model = .ready }
+        let size = ((try? FileManager.default.attributesOfItem(atPath: Self.modelFile.path)[.size]) as? NSNumber)?.int64Value ?? 0
+        if size > 300_000_000 { model = .ready }
     }
 
     var ready: Bool { if case .ready = model { return true }; return false }
@@ -103,8 +103,8 @@ final class WordSync: ObservableObject {
         case .failure(let e):
             model = .failed(e.localizedDescription)
         case .success(let tmp):
-            let size = (try? FileManager.default.attributesOfItem(atPath: tmp.path)[.size] as? Int64) ?? 0
-            guard let size, size > 300_000_000 else {
+            let size = ((try? FileManager.default.attributesOfItem(atPath: tmp.path)[.size]) as? NSNumber)?.int64Value ?? 0
+            guard size > 300_000_000 else {
                 try? FileManager.default.removeItem(at: tmp)
                 model = .failed("The downloaded file is incomplete")
                 return
