@@ -1,7 +1,7 @@
 import Foundation
 import AVFoundation
 import Accelerate
-import OnnxRuntimeBindings
+import COnnx
 
 // Precise word timing: Meta's MMS forced-alignment model (int8, run with ONNX Runtime) listens to a song and says when each letter is sung.
 // The lyric lines already have times; for every line this finds the words inside a small window around it, so the lit word follows the voice.
@@ -140,22 +140,16 @@ enum PCM16k {
 // MARK: - the model
 
 final class MMSRunner {
-    private let env: ORTEnv
-    private let session: ORTSession
-    private let inputName: String
-    private let outputName: String
+    private let handle: OpaquePointer
 
     init(path: String) throws {
-        env = try ORTEnv(loggingLevel: ORTLoggingLevel.warning)
-        let opts = try ORTSessionOptions()
-        let threads = max(2, ProcessInfo.processInfo.activeProcessorCount / 2)
-        try opts.setIntraOpNumThreads(Int32(threads))
-        session = try ORTSession(env: env, modelPath: path, sessionOptions: opts)
-        let ins = try session.inputNames(), outs = try session.outputNames()
-        guard ins.count == 1, let i = ins.first, let o = outs.first else { throw AlignError("The model isn't the one Strata expects (re-download it from Settings)") }
-        inputName = i
-        outputName = o
+        var err = [CChar](repeating: 0, count: 512)
+        let threads = Int32(max(2, ProcessInfo.processInfo.activeProcessorCount / 2))
+        let cap = err.count
+        guard let h = strata_ort_open(path, threads, &err, cap) else { throw AlignError(String(cString: err)) }
+        handle = h
     }
+    deinit { strata_ort_close(handle) }
 
     /// log-probabilities of the model's labels for every 20 ms of the song (frames × classes), computed in overlapping pieces
     func emissions(_ wave: [Float], progress: (Double) -> Void) throws -> (data: [Float], classes: Int) {
@@ -189,23 +183,17 @@ final class MMSRunner {
     }
 
     private func run(_ chunk: [Float]) throws -> ([Float], Int, Int) {
-        let n = chunk.count
-        guard let data = NSMutableData(length: n * MemoryLayout<Float>.size) else { throw AlignError("Not enough memory") }
-        chunk.withUnsafeBytes { data.replaceBytes(in: NSRange(location: 0, length: n * MemoryLayout<Float>.size), withBytes: $0.baseAddress!) }
-        let tensor = try ORTValue(tensorData: data, elementType: ORTTensorElementDataType.float, shape: [1, NSNumber(value: n)])
-        let outs = try session.run(withInputs: [inputName: tensor], outputNames: [outputName], runOptions: nil)
-        guard let o = outs[outputName] else { throw AlignError("The model gave no answer") }
-        let dims = try o.tensorTypeAndShapeInfo().shape.map { $0.intValue }
-        let raw = try o.tensorData()
-        var x = [Float](repeating: 0, count: raw.length / MemoryLayout<Float>.size)
-        x.withUnsafeMutableBytes { raw.getBytes($0.baseAddress!, length: raw.length) }
-        var frames = 0, c = 0
-        switch dims.count {
-        case 3: frames = dims[1]; c = dims[2]
-        case 2: frames = dims[0]; c = dims[1]
-        default: throw AlignError("The model's answer has an unexpected shape")
-        }
-        guard frames > 0, c > 1, frames * c <= x.count else { throw AlignError("The model's answer has an unexpected shape") }
+        var err = [CChar](repeating: 0, count: 512)
+        var out: UnsafeMutablePointer<Float>? = nil
+        var f64: Int64 = 0, c64: Int64 = 0
+        let n = Int64(chunk.count), cap = err.count
+        let rc = chunk.withUnsafeBufferPointer { strata_ort_run(handle, $0.baseAddress, n, &out, &f64, &c64, &err, cap) }
+        guard rc == 0, let p = out else { throw AlignError(String(cString: err)) }
+        defer { strata_ort_free(p) }
+        var frames = Int(f64), c = Int(c64)
+        guard frames > 0, c > 1 else { throw AlignError("The model's answer has an unexpected shape") }
+        var x = Array(UnsafeBufferPointer(start: p, count: frames * c))
+
         if c > 64 && frames <= 64 {            // [classes, frames] instead of [frames, classes]
             var t = [Float](repeating: 0, count: x.count)
             for f in 0..<c { for k in 0..<frames { t[f * frames + k] = x[k * c + f] } }
