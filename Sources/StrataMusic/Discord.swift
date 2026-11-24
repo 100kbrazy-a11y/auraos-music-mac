@@ -105,6 +105,29 @@ final class Discord {
     private var lastStart = 0.0
     private var shown = false
     private var latest: (Song?, Bool, Double, Double) = (nil, false, 0, 0)
+    static let statusChanged = Notification.Name("StrataDiscordStatus")
+    private let statusLock = NSLock()
+    private var _status = "Waiting for music"
+    /// what the presence is doing right now, for the settings page
+    var status: String { statusLock.lock(); defer { statusLock.unlock() }; return _status }
+    private func setStatus(_ s: String) {
+        statusLock.lock(); let changed = _status != s; _status = s; statusLock.unlock()
+        if changed { DispatchQueue.main.async { NotificationCenter.default.post(name: Discord.statusChanged, object: nil) } }
+    }
+
+    /// shows a test card for a few seconds, so you can tell whether it works without playing anything
+    func test() {
+        q.async { [self] in
+            let ok = ipc.setActivity(["type": 2, "details": "Strata Music", "state": "Presence is working"])
+            setStatus(ok ? "Connected: showing a test card" : "Discord isn't reachable. Is the Discord app open?")
+            if ok {
+                q.asyncAfter(deadline: .now() + 6) { [self] in
+                    lastKey = ""; shown = false
+                    if latest.0 == nil { _ = ipc.setActivity(nil); setStatus("Connected") } else { push() }
+                }
+            }
+        }
+    }
 
     func update(song: Song?, playing: Bool, position: Double, duration: Double) {
         q.async { [self] in
@@ -116,13 +139,13 @@ final class Discord {
     private func push() {
         let (song, playing, position, duration) = latest
         let d = UserDefaults.standard
-        let on = d.bool(forKey: "discordOn")
+        let on = d.object(forKey: "discordOn") as? Bool ?? true
         let hidePaused = d.object(forKey: "discordHidePaused") as? Bool ?? true
         let showCover = d.object(forKey: "discordCover") as? Bool ?? true
         let timeline = d.object(forKey: "discordTimeline") as? Bool ?? true
         guard on, let s = song, playing || !hidePaused else {
             if shown { _ = ipc.setActivity(nil); shown = false; lastKey = "" }
-            if !on { ipc.disconnect() }
+            if !on { ipc.disconnect(); setStatus("Off") } else { setStatus(ipc.connected ? "Connected" : "Waiting for music") }
             return
         }
         let now = Date().timeIntervalSince1970 * 1000
@@ -153,7 +176,8 @@ final class Discord {
         if !image.isEmpty { assets["large_image"] = image }
         if !s.album.isEmpty { assets["large_text"] = pad(s.album) }
         if !assets.isEmpty { act["assets"] = assets }
-        if ipc.setActivity(act) { shown = true } else { lastKey = "" }
+        if ipc.setActivity(act) { shown = true; setStatus("Showing: \(s.title)") }
+        else { lastKey = ""; setStatus("Discord isn't reachable. Is the Discord app open?") }
     }
 
     private func pad(_ s: String) -> String { let t = String(s.prefix(128)); return t.count < 2 ? t + " " : t }

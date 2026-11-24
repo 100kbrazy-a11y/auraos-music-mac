@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.1.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Fixes the freeze that happened when you switched back to the app or did something: saving, sorting, grouping albums and artists, and decoding covers no longer run on the thread that draws the window, and animations pause while the app is in the background",
+    "The Downloads item in the sidebar now shows a download symbol with how many are in progress and a tick with how many are done (0 is shown too); the page keeps its text and also lists what has been downloaded",
+    "Discord Rich Presence is on by default, with a status line and a Test button in Settings › Discord",
+    "Smoother pages (a short fade), a lighter player background, and a stall log in Diagnostics that records how long any freeze lasted"
+   ]
+  },
+  {
    "version": "2.0.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

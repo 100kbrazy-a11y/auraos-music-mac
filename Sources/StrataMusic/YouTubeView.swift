@@ -299,6 +299,7 @@ struct DownloadsView: View {
         VStack(spacing: 0) {
             HStack {
                 Text(dl.active > 0 ? "\(dl.active) downloading" : "Nothing downloading").foregroundStyle(.secondary)
+                Text("·  \(dl.finished) downloaded").foregroundStyle(.secondary)
                 Spacer()
                 if dl.items.contains(where: { $0.done || $0.failed }) { Button("Clear finished") { dl.clearFinished() } }
                 if dl.active > 0 { Button("Cancel all", role: .destructive) { dl.cancelAll() } }
@@ -311,7 +312,19 @@ struct DownloadsView: View {
                     Text("Songs you download from YouTube show up here with their progress.").foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(dl.items) { it in
+                List {
+                  ForEach(dl.items.filter { !$0.done }) { it in row(it) }
+                  let doneItems = dl.items.filter { $0.done }
+                  if !doneItems.isEmpty {
+                    Section("Downloaded") { ForEach(doneItems) { it in row(it) } }
+                  }
+                }
+                .scrollContentBackground(.hidden)
+            }
+        }
+    }
+
+    @ViewBuilder private func row(_ it: DlItem) -> some View {
                     HStack(spacing: 12) {
                         YtThumb(url: it.track.thumb, size: 44, radius: 7)
                         VStack(alignment: .leading, spacing: 4) {
@@ -325,10 +338,6 @@ struct DownloadsView: View {
                         else { Button { dl.cancel(it.id) } label: { Image(systemName: "xmark.circle") }.buttonStyle(.plain).help("Cancel") }
                     }
                     .padding(.vertical, 3)
-                }
-                .scrollContentBackground(.hidden)
-            }
-        }
     }
 
     private func statusLine(_ it: DlItem) -> String {

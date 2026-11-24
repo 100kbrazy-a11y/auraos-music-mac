@@ -138,6 +138,7 @@ struct LyricShareSheet: View {
     }
 
     @MainActor private func image() -> NSImage? {
+        _ = Covers.image(song, maxPixel: 240)
         let r = ImageRenderer(content: LyricCard(song: song, lines: chosen, accent: Covers.accent(song)).frame(width: 1080, height: 1080))
         r.scale = 1
         return r.nsImage

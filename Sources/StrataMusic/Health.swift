@@ -179,3 +179,44 @@ struct AdvancedSettings: View {
         .formStyle(.grouped)
     }
 }
+
+
+// MARK: - stalls
+
+/// Notices when the app stops answering for a moment (the "it freezes, then goes back to normal" kind of thing) and writes how long it lasted
+/// and what the app was doing, so a stall can be traced from the diagnostics instead of guessed at.
+enum HangWatch {
+    private static var started = false
+    private static let beat = HangBeat()
+
+    @MainActor static func start() {
+        if started { return }
+        started = true
+        let b = beat
+        let t = Thread {
+            while true {
+                Thread.sleep(forTimeInterval: 0.5)
+                let sent = Date()
+                let sem = DispatchSemaphore(value: 0)
+                DispatchQueue.main.async { sem.signal() }
+                if sem.wait(timeout: .now() + 0.7) == .timedOut {
+                    sem.wait()
+                    let gap = Date().timeIntervalSince(sent)
+                    let what = b.note
+                    Task { @MainActor in EngineLog.shared.add(String(format: "App stalled for %.1f s (%@)", gap, what.isEmpty ? "nothing noted" : what)) }
+                }
+            }
+        }
+        t.name = "strata.hangwatch"; t.qualityOfService = .utility; t.start()
+    }
+
+    /// short note on what's going on, shown next to a stall in the log
+    static func note(_ s: String) { beat.set(s) }
+}
+
+private final class HangBeat {
+    private let lock = NSLock()
+    private var _note = ""
+    var note: String { lock.lock(); defer { lock.unlock() }; return _note }
+    func set(_ s: String) { lock.lock(); _note = s; lock.unlock() }
+}

@@ -22,14 +22,24 @@ struct SongTable: View {
         _order = State(initialValue: keepOrder ? [] : recent ? [KeyPathComparator(\Song.added, order: .reverse)] : [KeyPathComparator(\Song.title)])
     }
 
-    private var shown: [Song] {
+    /// sorting thousands of titles with the system's string rules takes a while, so it's done away from the main thread, and only when something it depends on changed
+    @State private var sortedList: [Song] = []
+
+    private struct SortKey: Equatable { var sig: Int; var search: String; var order: String }
+    private var sortKey: SortKey {
+        var h = Hasher()
+        h.combine(songs.count)
+        for s in songs { h.combine(s.id); h.combine(s.title); h.combine(s.artist); h.combine(s.album); h.combine(s.plays); h.combine(s.duration); h.combine(s.added) }
+        return SortKey(sig: h.finalize(), search: search, order: order.map { "\(String(describing: $0.keyPath))\($0.order)" }.joined(separator: ","))
+    }
+
+    private static func filtered(_ songs: [Song], _ search: String) -> [Song] {
         let q = search.trimmingCharacters(in: .whitespaces)
-        let base = q.isEmpty ? songs : songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
-        return base.sorted(using: order)
+        return q.isEmpty ? songs : songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
     }
 
     var body: some View {
-        let list = shown
+        let list = sortedList.isEmpty ? Self.filtered(songs, search) : sortedList
         Table(list, selection: $selection, sortOrder: $order) {
             TableColumn("Title", value: \.title) { s in
                 HStack(spacing: 10) {
@@ -71,6 +81,11 @@ struct SongTable: View {
             if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
         }
         .scrollContentBackground(.hidden)
+        .task(id: sortKey) {
+            let snapshot = songs, q = search, ord = order
+            let result = await Task.detached(priority: .userInitiated) { Self.filtered(snapshot, q).sorted(using: ord) }.value
+            if !Task.isCancelled { sortedList = result }
+        }
         .sheet(item: $exporting) { ExportSheet(song: $0) }
         .sheet(item: $editing) { EditInfoSheet(song: $0) }
         .overlay { if songs.isEmpty { EmptyLibrary() } }

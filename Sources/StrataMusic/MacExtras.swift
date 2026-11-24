@@ -218,11 +218,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let crashed = CrashGuard.begin()
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in CrashGuard.end() }
+        HangWatch.start()
         if crashed { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Diagnostics.askAfterCrash() } }
         songWatcher = Player.shared.$current.dropFirst().removeDuplicates { $0?.id == $1?.id }.sink { song in
             Task { @MainActor in Notifier.songChanged(song) }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        Library.main?.saveNow()
+        PlayLog.shared.flush()
+        CrashGuard.end()
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

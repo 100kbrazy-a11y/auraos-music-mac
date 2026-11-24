@@ -31,27 +31,47 @@ func primaryArtist(_ s: String) -> String {
 
 enum Covers {
     static let cache = NSCache<NSString, NSImage>()
+    private static let lock = NSLock()
     private static var accents: [String: Color] = [:]
 
     static func url(_ s: Song) -> URL? { s.cover.isEmpty ? nil : Disk.dir.appendingPathComponent("covers/\(s.cover)") }
 
-    /// a picture no bigger than [maxPixel] (decoded once, then cached)
-    static func image(_ s: Song?, maxPixel: Int) -> NSImage? {
-        guard let s = s, let u = url(s) else { return nil }
-        let key = "\(s.cover)|\(maxPixel)" as NSString
-        if let c = cache.object(forKey: key) { return c }
+    private static func key(_ s: Song, _ maxPixel: Int) -> NSString { "\(s.cover)|\(maxPixel)" as NSString }
+
+    /// a picture that was already decoded (cheap, safe to ask while drawing)
+    static func cached(_ s: Song?, maxPixel: Int) -> NSImage? {
+        guard let s = s, !s.cover.isEmpty else { return nil }
+        return cache.object(forKey: key(s, maxPixel))
+    }
+
+    nonisolated static func decode(_ u: URL, maxPixel: Int) -> NSImage? {
         guard let src = CGImageSourceCreateWithURL(u as CFURL, nil) else { return nil }
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
-        let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-        cache.setObject(img, forKey: key)
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+
+    /// a picture no bigger than [maxPixel] (decoded once, then cached). This one decodes right now, so use [load] while drawing lists.
+    static func image(_ s: Song?, maxPixel: Int) -> NSImage? {
+        guard let s = s, let u = url(s) else { return nil }
+        if let c = cache.object(forKey: key(s, maxPixel)) { return c }
+        guard let img = decode(u, maxPixel: maxPixel) else { return nil }
+        cache.setObject(img, forKey: key(s, maxPixel))
         return img
     }
 
-    /// the cover's strongest colour (used for the player's glow and the buttons)
-    static func accent(_ s: Song?) -> Color {
-        guard let s = s, let u = url(s) else { return Theme.accent }
-        if let c = accents[s.cover] { return c }
+    /// the same, decoded away from the main thread
+    static func load(_ s: Song, maxPixel: Int) async -> NSImage? {
+        if let c = cache.object(forKey: key(s, maxPixel)) { return c }
+        guard let u = url(s) else { return nil }
+        let img = await Task.detached(priority: .userInitiated) { decode(u, maxPixel: maxPixel) }.value
+        if let img = img { cache.setObject(img, forKey: key(s, maxPixel)) }
+        return img
+    }
+
+    // MARK: the cover's strongest colour (used for the player's glow and the buttons)
+
+    nonisolated private static func computeAccent(_ u: URL) -> Color {
         var result = Theme.accent
         if let src = CGImageSourceCreateWithURL(u as CFURL, nil),
            let img = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 24] as CFDictionary) {
@@ -77,8 +97,29 @@ enum Covers {
                 result = Color(red: min(1, cr), green: min(1, cg), blue: min(1, cb))
             }
         }
-        accents[s.cover] = result
         return result
+    }
+
+    static func cachedAccent(_ s: Song?) -> Color? {
+        guard let s = s, !s.cover.isEmpty else { return Theme.accent }
+        lock.lock(); defer { lock.unlock() }
+        return accents[s.cover]
+    }
+
+    static func accent(_ s: Song?) -> Color {
+        guard let s = s, let u = url(s) else { return Theme.accent }
+        if let c = cachedAccent(s) { return c }
+        let c = computeAccent(u)
+        lock.lock(); accents[s.cover] = c; lock.unlock()
+        return c
+    }
+
+    static func accentAsync(_ s: Song?) async -> Color {
+        guard let s = s, let u = url(s) else { return Theme.accent }
+        if let c = cachedAccent(s) { return c }
+        let c = await Task.detached(priority: .userInitiated) { computeAccent(u) }.value
+        lock.lock(); accents[s.cover] = c; lock.unlock()
+        return c
     }
 }
 
@@ -86,10 +127,14 @@ struct CoverView: View {
     let song: Song?
     var size: CGFloat
     var radius: CGFloat = 8
+    @State private var loaded: (key: String, image: NSImage)?
+
+    private var px: Int { Int(size * 2) }
+    private var key: String { "\(song?.cover ?? "")|\(px)" }
 
     var body: some View {
         Group {
-            if let img = Covers.image(song, maxPixel: Int(size * 2)) {
+            if let img = Covers.cached(song, maxPixel: px) ?? (loaded?.key == key ? loaded?.image : nil) {
                 Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
             } else {
                 ZStack {
@@ -100,6 +145,10 @@ struct CoverView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .task(id: key) {
+            guard let s = song, !s.cover.isEmpty, Covers.cached(s, maxPixel: px) == nil else { return }
+            if let img = await Covers.load(s, maxPixel: px) { loaded = (key, img) }
+        }
     }
 }
 

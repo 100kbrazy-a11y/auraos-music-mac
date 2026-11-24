@@ -242,6 +242,38 @@ enum Home {
     }
 }
 
+/// what the Home page shows, worked out once per change of the library rather than every time anything redraws
+struct HomeData {
+    var jumpBack: [Song] = []
+    var forgotten: [AlbumInfo] = []
+    var topSongs: [Song] = []
+    var artists: [ArtistInfo] = []
+    var recentAlbums: [AlbumInfo] = []
+    var favs: [Song] = []
+    var unplayed: [Song] = []
+    var freshCover: Song?
+
+    @MainActor static func build(_ lib: Library) -> HomeData {
+        var d = HomeData()
+        var seen = Set<String>()
+        for s in lib.songs.filter({ $0.lastPlayed != nil }).sorted(by: { ($0.lastPlayed ?? 0) > ($1.lastPlayed ?? 0) }) {
+            if seen.insert(s.albumKey).inserted { d.jumpBack.append(s) }
+            if d.jumpBack.count >= 12 { break }
+        }
+        if d.jumpBack.isEmpty { d.jumpBack = Array(lib.recentSongs.prefix(12)) }
+        let cutoff = Date().timeIntervalSince1970 - 30 * 86400
+        func total(_ a: AlbumInfo) -> Int { a.songs.reduce(0) { $0 + ($1.plays ?? 0) } }
+        d.forgotten = Array(lib.albums.filter { a in total(a) >= 3 && (a.songs.compactMap { $0.lastPlayed }.max() ?? 0) < cutoff }.sorted { total($0) > total($1) }.prefix(12))
+        d.topSongs = lib.songs.filter { ($0.plays ?? 0) > 0 }.sorted { ($0.plays ?? 0) > ($1.plays ?? 0) }
+        d.artists = Array(Home.topArtists(lib).prefix(14))
+        d.recentAlbums = Array(lib.albums.sorted { ($0.songs.map { $0.added }.max() ?? 0) > ($1.songs.map { $0.added }.max() ?? 0) }.prefix(12))
+        d.favs = lib.favoriteSongs
+        d.unplayed = lib.songs.filter { ($0.plays ?? 0) == 0 }
+        d.freshCover = d.unplayed.randomElement()
+        return d
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
@@ -257,37 +289,20 @@ struct HomeView: View {
         if lib.songs.isEmpty { EmptyLibrary() } else { page }
     }
 
-    private var jumpBack: [Song] {
-        var seen = Set<String>(); var out: [Song] = []
-        for s in lib.songs.filter({ $0.lastPlayed != nil }).sorted(by: { ($0.lastPlayed ?? 0) > ($1.lastPlayed ?? 0) }) {
-            if seen.insert(s.albumKey).inserted { out.append(s) }
-            if out.count >= 12 { break }
-        }
-        return out.isEmpty ? Array(lib.recentSongs.prefix(12)) : out
-    }
-
-    private var forgotten: [AlbumInfo] {
-        let cutoff = Date().timeIntervalSince1970 - 30 * 86400
-        return lib.albums.filter { a in
-            let total = a.songs.reduce(0) { $0 + ($1.plays ?? 0) }
-            let last = a.songs.compactMap { $0.lastPlayed }.max() ?? 0
-            return total >= 3 && last < cutoff
-        }.sorted { $0.songs.reduce(0) { $0 + ($1.plays ?? 0) } > $1.songs.reduce(0) { $0 + ($1.plays ?? 0) } }.prefix(12).map { $0 }
-    }
-
-    private var topSongs: [Song] { lib.songs.filter { ($0.plays ?? 0) > 0 }.sorted { ($0.plays ?? 0) > ($1.plays ?? 0) } }
+    @State private var d = HomeData()
+    private func refresh() { d = HomeData.build(lib) }
 
     private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 Text(greeting).font(.system(size: 30, weight: .bold))
                 shelf("Jump back in") {
-                    ForEach(jumpBack) { s in
-                        HomeSongCard(song: s) { player.play(s, in: jumpBack) }
+                    ForEach(d.jumpBack) { s in
+                        HomeSongCard(song: s) { player.play(s, in: d.jumpBack) }
                     }
                 }
                 mixes
-                let artists = Array(Home.topArtists(lib).prefix(14))
+                let artists = d.artists
                 if !artists.isEmpty {
                     shelf("Your artists") {
                         ForEach(artists) { a in
@@ -301,24 +316,26 @@ struct HomeView: View {
                     }
                 }
                 releases
-                if !forgotten.isEmpty {
-                    shelf("It's been a while") { ForEach(forgotten) { AlbumCard(a: $0, size: 150) } }
+                if !d.forgotten.isEmpty {
+                    shelf("It's been a while") { ForEach(d.forgotten) { AlbumCard(a: $0, size: 150) } }
                 }
                 shelf("Recently added") {
-                    ForEach(Array(lib.albums.sorted { ($0.songs.map { $0.added }.max() ?? 0) > ($1.songs.map { $0.added }.max() ?? 0) }.prefix(12))) { AlbumCard(a: $0, size: 150) }
+                    ForEach(d.recentAlbums) { AlbumCard(a: $0, size: 150) }
                 }
             }
             .padding(24).padding(.bottom, 90)
         }
+        .onAppear(perform: refresh)
+        .onChange(of: lib.revision) { _ in refresh() }
         .task {
             await rel.refresh(lib: lib)
         }
     }
 
     @ViewBuilder private var mixes: some View {
-        let tops = Array(topSongs.prefix(3))
-        let favs = lib.favoriteSongs
-        let unplayed = lib.songs.filter { ($0.plays ?? 0) == 0 }
+        let tops = Array(d.topSongs.prefix(3))
+        let favs = d.favs
+        let unplayed = d.unplayed
         shelf("Made for you") {
             ForEach(tops) { s in
                 MixTile(title: s.title + " Radio", sub: "More like \(s.shownArtist)", cover: s, icon: "dot.radiowaves.left.and.right", tint: player.accent) { radio.start(from: s) }
@@ -326,11 +343,11 @@ struct HomeView: View {
             if favs.count >= 5 {
                 MixTile(title: "Favorites Mix", sub: "\(favs.count) songs you love", cover: favs.first, icon: "heart.fill", tint: .pink) { player.playAll(favs, shuffled: true) }
             }
-            if topSongs.count >= 5 {
-                MixTile(title: "On Repeat", sub: "Your most played", cover: topSongs.first, icon: "repeat", tint: .orange) { player.playAll(Array(topSongs.prefix(30)), shuffled: false) }
+            if d.topSongs.count >= 5 {
+                MixTile(title: "On Repeat", sub: "Your most played", cover: d.topSongs.first, icon: "repeat", tint: .orange) { player.playAll(Array(d.topSongs.prefix(30)), shuffled: false) }
             }
             if unplayed.count >= 5 {
-                MixTile(title: "Fresh Picks", sub: "Songs you haven't played yet", cover: unplayed.randomElement(), icon: "sparkles", tint: .teal) { player.playAll(Array(unplayed.shuffled().prefix(40)), shuffled: false) }
+                MixTile(title: "Fresh Picks", sub: "Songs you haven't played yet", cover: d.freshCover, icon: "sparkles", tint: .teal) { player.playAll(Array(unplayed.shuffled().prefix(40)), shuffled: false) }
             }
         }
     }
@@ -561,6 +578,9 @@ struct ReplayView: View {
     }
 
     @MainActor private func card(_ st: ReplayStats) -> NSImage? {
+        // pictures are normally loaded a moment after a view appears; a picture taken right now needs them ready
+        for e in st.songs.prefix(5) { _ = Covers.image(e.0, maxPixel: 168) }
+        for a in st.artists.prefix(3) { _ = Covers.image(a.2, maxPixel: 260) }
         let r = ImageRenderer(content: ReplayCard(period: period.rawValue, stats: st, accent: Covers.accent(st.songs.first?.0)).frame(width: 1080, height: 1350))
         r.scale = 1
         return r.nsImage

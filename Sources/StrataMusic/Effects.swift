@@ -1,22 +1,43 @@
 import SwiftUI
+import AppKit
 
-/// slow colour blobs from the cover, like the Android player's background
+/// true while the app is the one in front; animations pause when it isn't, so switching back never has a backlog to catch up on
+@MainActor
+final class AppActive: ObservableObject {
+    static let shared = AppActive()
+    @Published private(set) var active = true
+    private init() {
+        let c = NotificationCenter.default
+        c.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.active = true }
+        c.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.active = false }
+        c.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: .main) { [weak self] _ in self?.active = false }
+        c.addObserver(forName: NSApplication.didUnhideNotification, object: nil, queue: .main) { [weak self] _ in self?.active = true }
+    }
+}
+
+/// slow colour blobs from the cover, like the Android player's background.
+/// Each blob is a soft radial gradient, so there is no full-window blur to redraw every frame.
 struct AuroraBackground: View {
     var color: Color
+    @ObservedObject private var act = AppActive.shared
+
+    private func blob(_ c: Color, _ size: CGFloat) -> some View {
+        Circle().fill(RadialGradient(colors: [c, c.opacity(0)], center: .center, startRadius: 0, endRadius: size / 2)).frame(width: size, height: size)
+    }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: !act.active)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             GeometryReader { g in
                 let w = g.size.width, h = g.size.height
                 ZStack {
                     Color(red: 0.03, green: 0.03, blue: 0.04)
-                    Circle().fill(color.opacity(0.55)).frame(width: w * 0.7).offset(x: CGFloat(sin(t * 0.13)) * w * 0.25 - w * 0.15, y: CGFloat(cos(t * 0.11)) * h * 0.2 - h * 0.15)
-                    Circle().fill(color.opacity(0.35)).frame(width: w * 0.55).offset(x: CGFloat(cos(t * 0.09)) * w * 0.3 + w * 0.2, y: CGFloat(sin(t * 0.14)) * h * 0.25 + h * 0.2)
-                    Circle().fill(color.opacity(0.25)).frame(width: w * 0.45).offset(x: CGFloat(sin(t * 0.07 + 2)) * w * 0.3, y: CGFloat(cos(t * 0.1 + 1)) * h * 0.3 + h * 0.1)
+                    blob(color.opacity(0.75), w * 1.0).offset(x: CGFloat(sin(t * 0.13)) * w * 0.25 - w * 0.15, y: CGFloat(cos(t * 0.11)) * h * 0.2 - h * 0.15)
+                    blob(color.opacity(0.55), w * 0.8).offset(x: CGFloat(cos(t * 0.09)) * w * 0.3 + w * 0.2, y: CGFloat(sin(t * 0.14)) * h * 0.25 + h * 0.2)
+                    blob(color.opacity(0.4), w * 0.7).offset(x: CGFloat(sin(t * 0.07 + 2)) * w * 0.3, y: CGFloat(cos(t * 0.1 + 1)) * h * 0.3 + h * 0.1)
                 }
                 .frame(width: w, height: h)
-                .blur(radius: 110)
+                .drawingGroup()
                 .overlay(LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: .center, endPoint: .bottom))
             }
         }
@@ -33,6 +54,7 @@ private struct SeededGenerator: RandomNumberGenerator {
 struct FallingLeaves: View {
     /// the size of the whole window; both copies of the leaves (behind the library, behind the player) use it so they match exactly
     var area: CGSize? = nil
+    @ObservedObject private var act = AppActive.shared
     private struct Leaf { var x: Double; var speed: Double; var size: Double; var phase: Double; var sway: Double; var rot: Double; var spin: Double; var color: Color }
 
     private static let leaves: [Leaf] = {
@@ -59,8 +81,8 @@ struct FallingLeaves: View {
     private static let rib: Path = { var p = Path(); p.move(to: CGPoint(x: 0, y: -11)); p.addLine(to: CGPoint(x: 0, y: 14)); return p }()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            Canvas { ctx, canvasSize in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !act.active)) { tl in
+            Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
                 for l in Self.leaves {

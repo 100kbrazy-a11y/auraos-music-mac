@@ -159,7 +159,8 @@ struct DownloadSettings: View {
 }
 
 struct DiscordSettings: View {
-    @AppStorage("discordOn") private var on = false
+    @AppStorage("discordOn") private var on = true
+    @State private var status = Discord.shared.status
     @AppStorage("discordCover") private var cover = true
     @AppStorage("discordHidePaused") private var hidePaused = true
     @AppStorage("discordTimeline") private var timeline = true
@@ -167,6 +168,12 @@ struct DiscordSettings: View {
     var body: some View {
         Form {
             Section {
+                HStack(spacing: 8) {
+                    Circle().fill(!on ? Color.gray : status.hasPrefix("Discord isn't") ? Color.orange : Color.green).frame(width: 9, height: 9)
+                    Text(on ? status : "Off").foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Button("Test") { Discord.shared.test() }.disabled(!on)
+                }
                 Toggle("Show what I'm listening to on Discord", isOn: $on)
                 Toggle("Show the album cover", isOn: $cover)
                 Toggle("Show the song's progress", isOn: $timeline)
@@ -176,6 +183,7 @@ struct DiscordSettings: View {
             }
         }
         .formStyle(.grouped).scrollContentBackground(.hidden)
+        .onReceive(NotificationCenter.default.publisher(for: Discord.statusChanged)) { _ in status = Discord.shared.status }
         .onChange(of: on) { _ in Player.shared.refreshDiscord() }
         .onChange(of: cover) { _ in Player.shared.refreshDiscord() }
         .onChange(of: hidePaused) { _ in Player.shared.refreshDiscord() }

@@ -198,29 +198,53 @@ final class Library: ObservableObject {
         Library.main = self
         if let d = try? Data(contentsOf: Disk.dir.appendingPathComponent("library.json")),
            let s = try? JSONDecoder().decode(Saved.self, from: d) {
-            songs = s.songs.filter { FileManager.default.fileExists(atPath: $0.path) }
+            songs = s.songs
             favorites = Set(s.favorites); playlists = s.playlists; folders = s.folders; smart = s.smart ?? []
         }
         rebuild()
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in Library.box.flush() }
         watcher.onChange = { [weak self] in Task { @MainActor in self?.watchedChange() } }
         watcher.watch(folders)
+        // songs whose files went missing while the app was closed are dropped a moment after launch (checking them all is slow on some drives)
+        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); watchedChange() }
     }
 
-    /// the library is written a moment after the last change (and always when the app quits)
+    /// the library is written a moment after the last change: the (big) encode happens away from the main thread, and many changes in a row make one write
     func save() {
-        let s = Saved(songs: songs, favorites: Array(favorites), playlists: playlists, folders: folders, smart: smart)
-        if let d = try? JSONEncoder().encode(s) { Library.box.set(d) }
-        Task { try? await Task.sleep(nanoseconds: 800_000_000); Library.box.flush() }
         watcher.watch(folders)
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled, let self = self else { return }
+            let s = Saved(songs: self.songs, favorites: Array(self.favorites), playlists: self.playlists, folders: self.folders, smart: self.smart)
+            await Task.detached(priority: .utility) {
+                if let d = try? JSONEncoder().encode(s) { Library.box.set(d); Library.box.flush() }
+            }.value
+        }
     }
+
+    /// right now, for when the app is quitting
+    func saveNow() {
+        saveTask?.cancel()
+        let s = Saved(songs: songs, favorites: Array(favorites), playlists: playlists, folders: folders, smart: smart)
+        if let d = try? JSONEncoder().encode(s) { Library.box.set(d); Library.box.flush() }
+    }
+
+    private var saveTask: Task<Void, Never>?
+    private var rebuildTask: Task<Void, Never>?
+    private var importing = false
+    /// goes up whenever the songs change; pages that work something out from the whole library use it to know when to do it again
+    @Published private(set) var revision = 0
 
     /// something changed inside a music folder: look for new and missing songs, quietly
     private func watchedChange() {
-        guard Downloads.shared.active == 0 else { return }
-        songs = songs.filter { FileManager.default.fileExists(atPath: $0.path) }
-        rebuild()
-        Task { await importAsync(folders.map { URL(fileURLWithPath: $0) }, quiet: true) }
+        guard Downloads.shared.active == 0, !importing else { return }
+        let current = songs
+        Task {
+            // checking thousands of files is slow on a big or network drive, so it isn't done on the main thread
+            let gone = await Task.detached(priority: .utility) { Set(current.filter { !FileManager.default.fileExists(atPath: $0.path) }.map { $0.id }) }.value
+            if !gone.isEmpty { songs.removeAll { gone.contains($0.id) }; rebuild(); save() }
+            await importAsync(folders.map { URL(fileURLWithPath: $0) }, quiet: true)
+        }
     }
 
     func rebuildNow() { rebuild() }
@@ -236,18 +260,32 @@ final class Library: ObservableObject {
     }
     func deleteSmart(_ id: String) { smart.removeAll { $0.id == id }; save() }
 
+    /// the id lookup is instant; the albums and artists are grouped away from the main thread (and only the newest request finishes)
     private func rebuild() {
         byID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        revision &+= 1
+        let snapshot = songs
+        rebuildTask?.cancel()
+        rebuildTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let (a, ar) = Library.group(snapshot)
+            if Task.isCancelled { return }
+            await MainActor.run { self?.albums = a; self?.artists = ar }
+        }
+    }
+
+    nonisolated private static func group(_ songs: [Song]) -> ([AlbumInfo], [ArtistInfo]) {
         let grouped = Dictionary(grouping: songs, by: { $0.albumKey })
-        albums = grouped.map { key, list in
+        let albums = grouped.map { key, list -> AlbumInfo in
             let sorted = list.sorted { ($0.track == 0 ? 9999 : $0.track, $0.title) < ($1.track == 0 ? 9999 : $1.track, $1.title) }
             let f = sorted[0]
             return AlbumInfo(id: key, title: f.shownAlbum, artist: f.artistKey, year: f.year, songs: sorted)
         }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        var albumsOf: [String: [AlbumInfo]] = [:]
+        for a in albums { albumsOf[a.artist, default: []].append(a) }
         let byArtist = Dictionary(grouping: songs, by: { $0.artistKey })
-        artists = byArtist.map { name, list in
-            ArtistInfo(id: name, songs: list, albums: albums.filter { $0.artist == name })
-        }.sorted { $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending }
+        let artists = byArtist.map { name, list in ArtistInfo(id: name, songs: list, albums: albumsOf[name] ?? []) }
+            .sorted { $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending }
+        return (albums, artists)
     }
 
     // MARK: adding music
@@ -264,6 +302,7 @@ final class Library: ObservableObject {
     }
 
     func importAsync(_ urls: [URL], remember: Bool = false, thenPlay: Bool = false, quiet: Bool = false) async {
+        importing = true; defer { importing = false }
         if !quiet { status = "Looking for music…" }
         var files: [URL] = []; var skipped = 0
         for u in urls {
@@ -280,7 +319,7 @@ final class Library: ObservableObject {
             if batch.count >= 40 { songs.append(contentsOf: batch); batch = []; rebuild() }
         }
         if !batch.isEmpty { songs.append(contentsOf: batch); rebuild() }
-        save()
+        if !fresh.isEmpty || !quiet { save() }
         if quiet && fresh.isEmpty { return }
         var msg = fresh.isEmpty ? "Nothing new" : "Added \(fresh.count) songs"
         if skipped > 0 { msg += " · \(skipped) WebM files can't be played on the Mac yet" }
@@ -338,9 +377,12 @@ final class Library: ObservableObject {
 
     func rescan() {
         let urls = folders.map { URL(fileURLWithPath: $0) }
-        songs = songs.filter { FileManager.default.fileExists(atPath: $0.path) }
-        rebuild()
-        if !urls.isEmpty { importURLs(urls) } else { save() }
+        let current = songs
+        Task {
+            let gone = await Task.detached(priority: .utility) { Set(current.filter { !FileManager.default.fileExists(atPath: $0.path) }.map { $0.id }) }.value
+            if !gone.isEmpty { songs.removeAll { gone.contains($0.id) }; rebuild() }
+            if !urls.isEmpty { await importAsync(urls) } else { save() }
+        }
     }
 
     func remove(_ ids: Set<String>) {

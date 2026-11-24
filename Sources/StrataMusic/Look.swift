@@ -104,7 +104,7 @@ struct SnowFall: View {
     }()
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            Canvas { ctx, canvasSize in
+            Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
                 for f in Self.flakes {
@@ -143,7 +143,7 @@ struct PetalFall: View {
     }()
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            Canvas { ctx, canvasSize in
+            Canvas(rendersAsynchronously: true) { ctx, canvasSize in
                 let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
                 for l in Self.petals {

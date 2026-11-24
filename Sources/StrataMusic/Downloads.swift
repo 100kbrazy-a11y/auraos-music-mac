@@ -63,6 +63,7 @@ final class Downloads: ObservableObject {
     }()
 
     var active: Int { items.filter { !$0.done && !$0.failed }.count }
+    var finished: Int { items.filter { $0.done }.count }
     var parallel: Int { max(1, min(4, UserDefaults.standard.object(forKey: "dlParallel") as? Int ?? 2)) }
 
     nonisolated static var folder: URL {

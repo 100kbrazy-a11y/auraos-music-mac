@@ -97,9 +97,11 @@ struct RootView: View {
                 .onChange(of: g.size) { _ in windowFrame = g.frame(in: .global) }
         }.ignoresSafeArea())
         .background(WindowAccessor { w in
-            _ = w.setFrameAutosaveName("StrataMainWindow")
-            w.titleVisibility = showPlayer ? .hidden : .visible
-            w.titlebarAppearsTransparent = showPlayer
+            // this runs after every update of the page, so it only touches the window when something is different
+            if w.frameAutosaveName != "StrataMainWindow" { _ = w.setFrameAutosaveName("StrataMainWindow") }
+            let vis: NSWindow.TitleVisibility = showPlayer ? .hidden : .visible
+            if w.titleVisibility != vis { w.titleVisibility = vis }
+            if w.titlebarAppearsTransparent != showPlayer { w.titlebarAppearsTransparent = showPlayer }
         })
         .overlay { UpdatePrompt() }
         .overlay { ArtistGrabPrompt() }
@@ -395,7 +397,20 @@ struct SidebarView: View {
             }
             Section("YouTube") {
                 Label("Search & Download", systemImage: "magnifyingglass").tag(Nav.youtube)
-                Label("Downloads", systemImage: "arrow.down.circle").badge(dl.active).tag(Nav.downloads)
+                Label {
+                    HStack(spacing: 6) {
+                        Text("Downloads")
+                        Spacer(minLength: 4)
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle")
+                            Text("\(dl.active)").monospacedDigit()
+                        }.foregroundStyle(dl.active > 0 ? Color.accentColor : Color.secondary.opacity(0.7))
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.circle")
+                            Text("\(dl.finished)").monospacedDigit()
+                        }.foregroundStyle(dl.finished > 0 ? Color.green : Color.secondary.opacity(0.7))
+                    }.font(.system(size: 12))
+                } icon: { Image(systemName: "tray.and.arrow.down") }.tag(Nav.downloads)
             }
             Section("Playlists") {
                 ForEach(lib.playlists) { p in
@@ -470,6 +485,8 @@ struct DetailRoot: View {
             .navigationDestination(for: YtArtistRef.self) { YtArtistView(a: $0) }
         }
         .id(nav)
+        .transition(.opacity)
+        .animation(.easeOut(duration: 0.16), value: nav)
     }
 
     private var title: String {
