@@ -41,7 +41,8 @@ void strata_ort_close(strata_ort *s) {
 }
 
 strata_ort *strata_ort_open(const char *model_path, int threads, char *err, size_t errlen) {
-    const OrtApi *api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    // the library Strata ships is ONNX Runtime 1.22 (API version 22); the C API only grows, so any newer header is fine to compile against
+    const OrtApi *api = OrtGetApiBase()->GetApi(22);
     if (!api) { if (err && errlen) snprintf(err, errlen, "ONNX Runtime is not the version Strata was built with"); return NULL; }
     strata_ort *s = (strata_ort *)calloc(1, sizeof(strata_ort));
     if (!s) return NULL;
