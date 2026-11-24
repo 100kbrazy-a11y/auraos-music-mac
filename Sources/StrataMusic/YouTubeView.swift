@@ -356,7 +356,7 @@ final class ArtistGrab: ObservableObject {
 
     var busy: Bool { !status.isEmpty }
 
-    private func key(_ title: String, _ artist: String) -> String { title.lowercased() + "|" + primaryArtist(artist).lowercased() }
+    nonisolated private func key(_ title: String, _ artist: String) -> String { title.lowercased() + "|" + primaryArtist(artist).lowercased() }
 
     func start(id: String, name: String) {
         guard !busy else { return }
