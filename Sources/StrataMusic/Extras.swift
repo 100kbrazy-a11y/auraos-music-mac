@@ -53,11 +53,18 @@ struct QueueView: View {
     }
 }
 
+enum QueueScope { case bar, player, none }
+
 struct QueueButton: View {
+    var scope: QueueScope = .bar
     @State private var show = false
     var body: some View {
         Button { show.toggle() } label: { Image(systemName: "list.bullet") }
-            .buttonStyle(.plain).help("Up Next")
+            .buttonStyle(.plain).help("Up Next (⌘U)")
+            // ⌘U: only the button that's actually on screen answers (the bar's, or the full player's)
+            .onReceive(NotificationCenter.default.publisher(for: .toggleQueue)) { _ in
+                if scope != .none && (scope == .player) == Presence.playerOpen { show.toggle() }
+            }
             .popover(isPresented: $show, arrowEdge: .top) { QueueView() }
     }
 }

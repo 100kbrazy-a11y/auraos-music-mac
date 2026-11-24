@@ -143,7 +143,7 @@ struct ExtraControls: View {
             SpeedButton().foregroundStyle(.white.opacity(0.7))
             RoutePicker().frame(width: 24, height: 24)
             SleepButton().foregroundStyle(.white.opacity(0.7))
-            QueueButton().foregroundStyle(.white.opacity(0.7))
+            QueueButton(scope: .player).foregroundStyle(.white.opacity(0.7))
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))
             Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 110).tint(.white)
             Image(systemName: "speaker.wave.3.fill").foregroundStyle(.white.opacity(0.6))

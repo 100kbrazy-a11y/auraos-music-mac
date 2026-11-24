@@ -20,6 +20,9 @@ struct GeneralSettings: View {
     @AppStorage("leaves") private var leaves = true
     @AppStorage("liveYt") private var liveYt = true
     @AppStorage("homeReleases") private var homeReleases = true
+    @AppStorage("menuBar") private var menuBar = true
+    @AppStorage("miniOnTop") private var miniOnTop = true
+    @AppStorage("notifySong") private var notifySong = false
 
     var body: some View {
         Form {
@@ -48,6 +51,10 @@ struct GeneralSettings: View {
                 Toggle("Falling leaves (The Thanksgiving Update)", isOn: $leaves)
                 Toggle("Show YouTube results while I type in search", isOn: $liveYt)
                 Toggle("Look for new releases from my artists (weekly)", isOn: $homeReleases)
+                Toggle("Show the player in the menu bar", isOn: $menuBar)
+                Toggle("Keep the mini player above other windows", isOn: $miniOnTop)
+                Toggle("Show a notification when the song changes (while the app is in the background)", isOn: $notifySong)
+                    .onChange(of: notifySong) { on in if on { Notifier.authorize() } }
             }
             Section("Opus and Ogg files") {
                 Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)

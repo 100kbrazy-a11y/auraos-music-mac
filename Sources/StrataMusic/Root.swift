@@ -138,6 +138,15 @@ struct RootView: View {
                 searchNav.sel = -1
             }
         }
+        .onChange(of: showPlayer) { Presence.playerOpen = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { n in
+            // the green button goes straight to the player
+            if (n.object as? NSWindow)?.frameAutosaveName == "StrataMainWindow", player.current != nil, !showPlayer { openPlayer() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jumpCurrent)) { _ in
+            if let s = player.current { openAlbum(s.albumKey) }
+            if showPlayer { closePlayer() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in if !showPlayer { searchFocus = true } }
         .onReceive(NotificationCenter.default.publisher(for: .showDownloads)) { _ in nav = .downloads; path = NavigationPath() }

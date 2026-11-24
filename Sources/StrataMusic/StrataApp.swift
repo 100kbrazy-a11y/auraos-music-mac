@@ -6,9 +6,12 @@ struct StrataApp: App {
     @StateObject private var lib = Library()
     @StateObject private var player = Player.shared
     @StateObject private var updater = Updater()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage("menuBar") private var menuBar = true
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
                 .environmentObject(lib)
                 .environmentObject(player)
@@ -34,8 +37,14 @@ struct StrataApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Add Music…") { lib.pickMusic() }.keyboardShortcut("o")
             }
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") { openWindow(id: "shortcuts") }.keyboardShortcut("/", modifiers: .command)
+            }
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.togglePlay() }.keyboardShortcut(.space, modifiers: [])
+                Button("Skip Back 10 Seconds") { player.seek(to: max(0, player.clock.position - 10)) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                Button("Skip Forward 10 Seconds") { player.seek(to: min(player.duration, player.clock.position + 10)) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                Divider()
                 Button("Next Song") { player.next() }.keyboardShortcut(.rightArrow, modifiers: .command)
                 Button("Previous Song") { player.previous() }.keyboardShortcut(.leftArrow, modifiers: .command)
                 Divider()
@@ -46,9 +55,30 @@ struct StrataApp: App {
                 Button("Change Repeat") { player.cycleRepeat() }.keyboardShortcut("r", modifiers: [.command, .option])
                 Divider()
                 Button("Show Player") { NotificationCenter.default.post(name: .openPlayer, object: nil) }.keyboardShortcut("l", modifiers: [.command, .shift])
-                Button("Lyrics") { NotificationCenter.default.post(name: .openPlayer, object: nil); NotificationCenter.default.post(name: .playerPage, object: 0) }.keyboardShortcut("l", modifiers: .command)
+                Button("Lyrics") { NotificationCenter.default.post(name: .openPlayer, object: nil); NotificationCenter.default.post(name: .playerPage, object: 0) }.keyboardShortcut("l", modifiers: [.command, .option])
+                Button("Up Next") { NotificationCenter.default.post(name: .toggleQueue, object: nil) }.keyboardShortcut("u", modifiers: .command)
+                Button("Show Current Song's Album") { NotificationCenter.default.post(name: .jumpCurrent, object: nil) }.keyboardShortcut("j", modifiers: .command)
+                Button("Mini Player") { Presence.toggleMini { openWindow(id: "mini") } }.keyboardShortcut("m", modifiers: [.command, .option])
+                Divider()
+                Button(player.current.map { lib.isFav($0) } == true ? "Remove from Favorites" : "Add to Favorites") { if let s = player.current { lib.toggleFav(s) } }.keyboardShortcut("l", modifiers: .command)
+                Button("Start Radio from This Song") { if let s = player.current { Radio.shared.start(from: s) } }
             }
         }
+        MenuBarExtra(isInserted: $menuBar) {
+            MenuBarPlayer().environmentObject(lib).environmentObject(player)
+        } label: {
+            Image(systemName: player.isPlaying ? "waveform" : "music.note")
+        }
+        .menuBarExtraStyle(.window)
+        Window("Mini Player", id: "mini") {
+            MiniPlayerView().environmentObject(lib).environmentObject(player)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 340, height: 78)
+        Window("Keyboard Shortcuts", id: "shortcuts") {
+            ShortcutsView()
+        }
+        .windowResizability(.contentSize)
         Settings {
             SettingsView().environmentObject(lib).environmentObject(updater)
         }

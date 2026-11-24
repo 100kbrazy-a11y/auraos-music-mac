@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.6.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Menu bar player: cover, seek bar, transport, like and Up Next from the top of your screen (can be turned off in Settings)",
+    "Mini player: a small floating window that resizes from a thin strip up to a square cover. Toggle it with ⌥⌘M",
+    "Dock menu with play/pause, next, previous and like; optional notification when the song changes",
+    "Keyboard: ⌘L likes, ⌘U opens Up Next, ⌘J shows the current song's album, ⌥⌘←/→ skip 10 seconds, ⌘/ lists every shortcut (Lyrics moved to ⌥⌘L)",
+    "The green full screen button now opens the player"
+   ]
+  },
+  {
    "version": "1.5.0",
    "name": "The Macster Update",
    "date": "2026-11-24",
