@@ -5,3 +5,4 @@ build/
 dist/
 engine/dist/
 node_modules/
+vendor/

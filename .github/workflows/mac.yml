@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: ONNX Runtime (runs the word-timing model)
+        run: scripts/get_onnxruntime.sh
+
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: engine/package-lock.json }
 
@@ -110,10 +113,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: ONNX Runtime (runs the word-timing model)
+        run: scripts/get_onnxruntime.sh
       - name: Newest Xcode
         run: |
           X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1 || true)
           if [ -z "$X" ]; then X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); fi
           sudo xcode-select -s "$X/Contents/Developer"
       - name: swift test
-        run: swift test 2>&1 | tail -60
+        run: DYLD_FALLBACK_LIBRARY_PATH="$PWD/vendor/onnxruntime/lib" swift test 2>&1 | tail -60
