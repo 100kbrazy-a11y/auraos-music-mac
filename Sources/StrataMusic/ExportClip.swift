@@ -186,8 +186,8 @@ struct ExportClipSheet: View {
         GeometryReader { g in
             let w = max(1, g.size.width)
             let dur = max(1, song.duration)
-            func x(_ t: Double) -> CGFloat { CGFloat(t / dur) * w }
-            func time(_ px: CGFloat) -> Double { Double(min(max(px / w, 0), 1)) * dur }
+            let x: (Double) -> CGFloat = { t in CGFloat(t / dur) * w }
+            let time: (CGFloat) -> Double = { px in Double(min(max(px / w, 0), 1)) * dur }
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.07))
                 Canvas { ctx, size in
