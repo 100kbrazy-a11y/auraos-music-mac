@@ -330,6 +330,15 @@ final class LyricsStore: ObservableObject {
 
     /// the stretches with nothing sung that are long enough to show dots for: key = the line that follows (the line count = after the last line)
     func gaps(duration: Double) -> [Int: ClosedRange<Double>] {
+        let key = "\(loadedID)|\(lines.count)|\(Int(duration))|\(wordSynced)|\(Int((lines.last?.sungEnd ?? 0) * 10))"
+        if let c = gapCache, c.key == key { return c.value }
+        let g = computeGaps(duration: duration)
+        gapCache = (key, g)
+        return g
+    }
+    private var gapCache: (key: String, value: [Int: ClosedRange<Double>])?
+
+    private func computeGaps(duration: Double) -> [Int: ClosedRange<Double>] {
         var out: [Int: ClosedRange<Double>] = [:]
         guard let first = lines.first, let last = lines.last else { return out }
         if first.time >= 4, !first.text.isEmpty { out[0] = 0...first.time }

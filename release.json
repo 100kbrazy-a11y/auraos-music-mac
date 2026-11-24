@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.8.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Fixes the lag from 2.6 and 2.7: word timing no longer uses a big downloaded model. It is replaced by a small home-made voice finder that runs on one core for a couple of seconds per song, with nothing to download. The old model is deleted automatically.",
+    "The voice finder keeps the centred, steady part of the song (the singing), finds where each syllable starts, and lines every word up with it. Lines are timed to the real singing, so ad-libs don't rush or cut a line. Works best when the vocals are in the middle of the mix.",
+    "Word timing is on by default (Settings > General > Word timing). Karaoke features all work with it: word-by-word lighting, two lit lines, the filling dots and the lyric wheel.",
+    "Strata Music for Mac works on macOS 13 again."
+   ]
+  },
+  {
    "version": "2.7.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

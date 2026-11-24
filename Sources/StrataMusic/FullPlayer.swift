@@ -273,7 +273,7 @@ struct LyricsPage: View {
             Toggle("Show in Latin letters", isOn: $romanize)
             if #available(macOS 15.0, *) { Toggle("Translate", isOn: $translate) }
             Divider()
-            if sync.ready {
+            do {
                 Button(store.wordSynced ? "Sync words again" : "Sync words precisely") { sync.run(s) }.disabled(sync.busyID != nil || !store.synced)
                 if store.wordSynced { Button("Go back to the original timing") { Task { await store.clearAligned(s) } } }
             }

@@ -4,7 +4,6 @@ set -euo pipefail
 VERSION="${1:?usage: build_app.sh VERSION}"
 cd "$(dirname "$0")/.."
 
-scripts/get_onnxruntime.sh
 swift build -c release --arch arm64 --arch x86_64
 BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/StrataMusic"
 
@@ -12,9 +11,6 @@ rm -rf dist build; mkdir -p dist build
 APP="dist/Strata Music.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/StrataMusic"
-# ONNX Runtime (runs the word-timing model); the app finds it through the @executable_path/../Frameworks rpath
-mkdir -p "$APP/Contents/Frameworks"
-for f in vendor/onnxruntime/lib/libonnxruntime.[0-9]*.dylib; do cp "$f" "$APP/Contents/Frameworks/"; done
 
 # the app icon: the same picture as the Android app (assets/AppIcon.png, 1024 px)
 ICONSET=build/AppIcon.iconset; mkdir -p "$ICONSET"
@@ -39,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>

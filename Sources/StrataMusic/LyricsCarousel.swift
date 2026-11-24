@@ -103,23 +103,45 @@ struct CarouselEffect: ViewModifier, Animatable {
 /// "• • •" for a stretch with nothing sung (the start and end of a song, a long break): the dots fill one by one as the next line gets closer
 struct GapDots: View {
     let range: ClosedRange<Double>          // lyric time, from the end of the last line to the start of the next
-    @ObservedObject var clock: Clock
+    let clock: Clock
     let offset: Double
     let live: Bool
+    let playing: Bool
+
+    var body: some View {
+        if live {
+            LiveDots(range: range, clock: clock, offset: offset, playing: playing)
+        } else {
+            // not the stretch we are in: fixed, empty before it and full after it, and nothing follows the clock
+            DotsShape(progress: clock.position + 0.2 - offset >= range.upperBound ? 1 : 0)
+        }
+    }
+}
+
+private struct LiveDots: View {
+    let range: ClosedRange<Double>
+    @ObservedObject var clock: Clock
+    let offset: Double
     let playing: Bool
     @ObservedObject private var act = AppActive.shared
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !live || !playing || !act.active)) { _ in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !playing || !act.active)) { _ in
             let t = clock.live + 0.05 - offset
-            let p = live ? max(0, min(1, (t - range.lowerBound) / max(0.5, range.upperBound - range.lowerBound))) : (t >= range.upperBound ? 1 : 0)
-            HStack(spacing: 14) {
-                ForEach(0..<3, id: \.self) { k in
-                    let f = max(0, min(1, p * 3 - Double(k)))
-                    Circle().fill(Color.white.opacity(0.28 + 0.72 * f)).frame(width: 20, height: 20).scaleEffect(0.8 + 0.3 * f)
-                }
-            }
-            .padding(.vertical, 12)
+            DotsShape(progress: max(0, min(1, (t - range.lowerBound) / max(0.5, range.upperBound - range.lowerBound))))
         }
+    }
+}
+
+private struct DotsShape: View {
+    let progress: Double
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(0..<3, id: \.self) { k in
+                let f = max(0, min(1, progress * 3 - Double(k)))
+                Circle().fill(Color.white.opacity(0.28 + 0.72 * f)).frame(width: 20, height: 20).scaleEffect(0.8 + 0.3 * f)
+            }
+        }
+        .padding(.vertical, 12)
     }
 }

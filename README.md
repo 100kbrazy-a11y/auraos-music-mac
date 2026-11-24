@@ -1,14 +1,13 @@
 # Strata Music for Mac
 
 The Mac version of Strata Music: the Android app's look mixed with Apple Music's layout, in SwiftUI.
-Liquid Glass on macOS 26 and later, blurred glass on macOS 14 and 15 (macOS 14 or later is required).
+Liquid Glass on macOS 26 and later, blurred glass on macOS 13 to 15.
 
 - Songs, Albums, Artists, Favorites, Playlists; add folders or drop songs on the window
 - Full-screen player with three pages (Lyrics, Current Song, Artist) and a glass pill to switch between them
 - Synced lyrics (LRCLIB or a `.lrc` next to the song), falling leaves (The Thanksgiving Update)
-- Optional precise word timing: Meta's MMS forced-alignment model (int8 ONNX, downloaded on demand, non-commercial licence) listens to the song and times every word
+- Word timing: a small home-made voice finder (Sources/CVoice, plain C) picks out the singing and lines each word up with it; nothing to download
 - Discord Rich Presence with the album cover, over the Discord app on the Mac (no sign-in)
-- Building: run `scripts/get_onnxruntime.sh` once (it fetches ONNX Runtime into `vendor/`), then `swift build`
 - Export a song as M4A, ALAC, FLAC, WAV or AIFF; media keys and Control Centre
 - Updates from GitHub releases (`mac-vX.Y.Z`)
 
