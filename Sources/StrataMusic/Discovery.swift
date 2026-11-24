@@ -29,13 +29,15 @@ final class PlayLog: @unchecked Sendable {
         saver?.cancel()
         saver = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 5_000_000_000)
-            if !Task.isCancelled { self?.flush() }
+            if !Task.isCancelled { self?.flush(wait: false) }
         }
     }
 
-    func flush() {
-        let snapshot = entries
-        if let d = try? JSONEncoder().encode(snapshot) { try? d.write(to: url, options: .atomic) }
+    /// writes the history; when [wait] is false the encoding happens away from the main thread
+    func flush(wait: Bool = true) {
+        let snapshot = entries, target = url
+        let work = { if let d = try? JSONEncoder().encode(snapshot) { try? d.write(to: target, options: .atomic) } }
+        if wait { work() } else { DispatchQueue.global(qos: .utility).async(execute: work) }
     }
 }
 
@@ -404,7 +406,7 @@ struct HomeSongCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 CoverView(song: song, size: 150, radius: 10)
-                    .shadow(color: .black.opacity(hover ? 0.5 : 0.3), radius: hover ? 14 : 8, y: hover ? 8 : 4)
+                    .shadow(color: .black.opacity(hover ? 0.5 : 0), radius: hover ? 14 : 0, y: hover ? 8 : 0)
                     .scaleEffect(hover ? 1.025 : 1)
                 Text(song.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 Text(song.shownArtist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
@@ -432,7 +434,7 @@ struct MixTile: View {
                     .overlay(alignment: .topLeading) { Image(systemName: icon).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).padding(10) }
                     .overlay(alignment: .bottomLeading) { Text(title).font(.system(size: 15, weight: .heavy)).foregroundStyle(.white).lineLimit(2).padding(10) }
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: .black.opacity(hover ? 0.5 : 0.3), radius: hover ? 14 : 8, y: hover ? 8 : 4)
+                    .shadow(color: .black.opacity(hover ? 0.5 : 0), radius: hover ? 14 : 0, y: hover ? 8 : 0)
                     .scaleEffect(hover ? 1.025 : 1)
                 Text(sub).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }

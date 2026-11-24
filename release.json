@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.4.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "The Settings tab inside the app is gone; settings are in the Strata Music menu (Settings…, ⌘,)",
+    "Lighter again: dragging the volume slider no longer redraws the rest of the app, the sidebar and Downloads row update on their own while downloads run, YouTube pictures are downloaded once and shrunk to the size they're shown at, album cards only draw a shadow while you point at them, and the play history is saved in the background"
+   ]
+  },
+  {
    "version": "2.3.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

@@ -177,7 +177,7 @@ struct AlbumCard: View {
             NavigationLink(value: AlbumRef(key: a.id)) {
                 VStack(alignment: .leading, spacing: 6) {
                     CoverView(song: a.cover, size: size, radius: 10)
-                        .shadow(color: .black.opacity(hover ? 0.5 : 0.3), radius: hover ? 14 : 8, y: hover ? 8 : 4)
+                        .shadow(color: .black.opacity(hover ? 0.5 : 0), radius: hover ? 14 : 0, y: hover ? 8 : 0)
                         .scaleEffect(hover ? 1.025 : 1)
                     Text(a.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     Text(a.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)

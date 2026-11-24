@@ -48,12 +48,7 @@ struct YtThumb: View {
     var body: some View {
         Group {
             if let u = URL(string: url), !url.isEmpty {
-                AsyncImage(url: u) { ph in
-                    switch ph {
-                    case .success(let i): i.resizable().aspectRatio(contentMode: .fill)
-                    default: Color(white: 0.16)
-                    }
-                }
+                CachedThumb(url: u, pixels: Int(size * 2))
             } else { Color(white: 0.16).overlay(Image(systemName: "music.note").foregroundStyle(.white.opacity(0.4))) }
         }
         .frame(width: size, height: size)
@@ -449,5 +444,32 @@ extension View {
     /// "Download everything" for a YouTube artist
     func grabMenu(_ id: String, _ name: String) -> some View {
         contextMenu { Button("Download Everything by \(name)") { ArtistGrab.shared.start(id: id, name: name) } }
+    }
+}
+
+/// a web picture that is downloaded once, shrunk to the size it's shown at, and remembered
+struct CachedThumb: View {
+    let url: URL
+    let pixels: Int
+    @State private var img: NSImage?
+    private static let cache: NSCache<NSString, NSImage> = { let c = NSCache<NSString, NSImage>(); c.countLimit = 400; return c }()
+
+    private var key: NSString { "\(url.absoluteString)|\(pixels)" as NSString }
+
+    var body: some View {
+        Group {
+            if let i = img ?? Self.cache.object(forKey: key) { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) }
+            else { Color(white: 0.16) }
+        }
+        .task(id: url) {
+            if Self.cache.object(forKey: key) != nil { return }
+            let k = key, u = url, px = pixels
+            let out: NSImage? = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard let (d, _) = try? await URLSession.shared.data(from: u), let src = CGImageSourceCreateWithData(d as CFData, nil),
+                      let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: px] as CFDictionary) else { return nil }
+                return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+            }.value
+            if let out = out { Self.cache.setObject(out, forKey: k); img = out }
+        }
     }
 }

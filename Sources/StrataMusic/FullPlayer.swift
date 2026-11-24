@@ -170,7 +170,7 @@ struct ExtraControls: View {
             if pbSleep { SleepButton().foregroundStyle(.white.opacity(0.7)) }
             if pbQueue { QueueButton(scope: .player).foregroundStyle(.white.opacity(0.7)) }
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))
-            Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 110).tint(.white)
+            VolumeSlider(vol: player.vol).frame(width: 110).tint(.white)
             Image(systemName: "speaker.wave.3.fill").foregroundStyle(.white.opacity(0.6))
             if pbExport { Button { exporting = player.current } label: { Image(systemName: "square.and.arrow.up").foregroundStyle(.white.opacity(0.7)) }.help("Export this song") }
         }

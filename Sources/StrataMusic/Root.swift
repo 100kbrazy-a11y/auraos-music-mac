@@ -5,7 +5,7 @@ enum Nav: Hashable {
     case home, replay
     case songs, recent, albums, artists, favorites, duplicates
     case smart(String)
-    case youtube, downloads, settings
+    case youtube, downloads
     case playlist(String)
 }
 
@@ -388,11 +388,31 @@ struct SearchDropdown: View {
 
 // MARK: - sidebar
 
+/// the Downloads line of the sidebar: only this little view redraws while downloads make progress
+struct DownloadsRow: View {
+    @ObservedObject var dl = Downloads.shared
+    var body: some View {
+        Label {
+            HStack(spacing: 6) {
+                Text("Downloads")
+                Spacer(minLength: 4)
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down.circle")
+                    Text("\(dl.active)").monospacedDigit()
+                }.foregroundStyle(dl.active > 0 ? Color.accentColor : Color.secondary.opacity(0.7))
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark.circle")
+                    Text("\(dl.finished)").monospacedDigit()
+                }.foregroundStyle(dl.finished > 0 ? Color.green : Color.secondary.opacity(0.7))
+            }.font(.system(size: 12))
+        } icon: { Image(systemName: "tray.and.arrow.down") }
+    }
+}
+
 struct SidebarView: View {
     @Binding var nav: Nav?
     @EnvironmentObject var lib: Library
     @EnvironmentObject var updater: Updater
-    @ObservedObject var dl = Downloads.shared
     @State private var renaming: Playlist?
     @State private var dropOn: String?
     @State private var newName = ""
@@ -426,20 +446,7 @@ struct SidebarView: View {
             }
             Section("YouTube") {
                 Label("Search & Download", systemImage: "magnifyingglass").tag(Nav.youtube)
-                Label {
-                    HStack(spacing: 6) {
-                        Text("Downloads")
-                        Spacer(minLength: 4)
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.down.circle")
-                            Text("\(dl.active)").monospacedDigit()
-                        }.foregroundStyle(dl.active > 0 ? Color.accentColor : Color.secondary.opacity(0.7))
-                        HStack(spacing: 3) {
-                            Image(systemName: "checkmark.circle")
-                            Text("\(dl.finished)").monospacedDigit()
-                        }.foregroundStyle(dl.finished > 0 ? Color.green : Color.secondary.opacity(0.7))
-                    }.font(.system(size: 12))
-                } icon: { Image(systemName: "tray.and.arrow.down") }.tag(Nav.downloads)
+                DownloadsRow().tag(Nav.downloads)
             }
             Section("Playlists") {
                 ForEach(lib.playlists) { p in
@@ -474,6 +481,7 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
+            if updater.available != nil {
             VStack(spacing: 8) {
                 if let r = updater.available {
                     Button { updater.showPrompt = true } label: {
@@ -481,10 +489,9 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                Button { nav = .settings } label: { Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading) }
-                    .buttonStyle(.plain).foregroundStyle(nav == .settings ? Color.primary : Color.secondary)
             }
             .padding(10)
+            }
         }
         .sheet(item: $editingSmart) { sp in SmartEditor(sp: sp, isNew: !lib.smart.contains { $0.id == sp.id }) }
         .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -519,7 +526,6 @@ struct DetailRoot: View {
                     if let sp = lib.smartPlaylist(id) { SongTable(songs: lib.songs(in: sp), search: search, keepOrder: true) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
                 case .youtube: YouTubeView()
                 case .downloads: DownloadsView()
-                case .settings: SettingsView(embedded: true)
                 case .playlist(let id):
                     if let p = lib.playlists.first(where: { $0.id == id }) { SongTable(songs: lib.songs(in: p), search: search) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
                 }
@@ -548,7 +554,6 @@ struct DetailRoot: View {
         case .smart(let id): return lib.smartPlaylist(id)?.name ?? "Smart Playlist"
         case .youtube: return "Search & Download"
         case .downloads: return "Downloads"
-        case .settings: return "Settings"
         case .playlist(let id): return lib.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
         }
     }

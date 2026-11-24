@@ -129,7 +129,7 @@ struct EqBars: View {
     var playing: Bool
     var color: Color
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !playing)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 10.0, paused: !playing)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             HStack(alignment: .bottom, spacing: 2) {
                 ForEach(0..<3, id: \.self) { i in

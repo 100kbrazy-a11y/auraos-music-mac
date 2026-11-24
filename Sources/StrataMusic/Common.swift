@@ -31,7 +31,7 @@ func primaryArtist(_ s: String) -> String {
 // MARK: - cover pictures
 
 enum Covers {
-    static let cache = NSCache<NSString, NSImage>()
+    static let cache: NSCache<NSString, NSImage> = { let c = NSCache<NSString, NSImage>(); c.countLimit = 700; return c }()
     private static let lock = NSLock()
     private static var accents: [String: Color] = [:]
 

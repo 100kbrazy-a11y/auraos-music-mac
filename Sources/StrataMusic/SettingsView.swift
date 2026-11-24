@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
-    var embedded = false
     var body: some View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
@@ -14,7 +13,7 @@ struct SettingsView: View {
             AdvancedSettings().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .modifier(SettingsFrame(embedded: embedded))
+        .frame(width: 540, height: 430)
     }
 }
 
@@ -223,13 +222,5 @@ struct UpdateSettings: View {
             }
         }
         .formStyle(.grouped).scrollContentBackground(.hidden)
-    }
-}
-
-private struct SettingsFrame: ViewModifier {
-    var embedded: Bool
-    func body(content: Content) -> some View {
-        if embedded { content.frame(maxWidth: 680, maxHeight: .infinity).padding(.top, 6).frame(maxWidth: .infinity) }
-        else { content.frame(width: 540, height: 430) }
     }
 }

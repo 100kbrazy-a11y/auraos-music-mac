@@ -19,7 +19,9 @@ final class Player: ObservableObject {
     @Published private(set) var accent: Color = Theme.accent
     @Published var shuffle = false { didSet { reshuffle() } }
     @Published var repeatMode = 0                      // 0 off, 1 all, 2 one
-    @Published var volume: Float = 1 { didSet { setOutVolume(volume) } }
+    /// the volume lives in its own small object, so dragging the slider redraws the slider and nothing else
+    let vol = VolumeModel()
+    var volume: Float { get { vol.value } set { vol.value = newValue; setOutVolume(newValue) } }
     /// 0.5x to 2x
     @Published var speed: Float = 1 { didSet { avp.defaultRate = speed; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
     @Published private(set) var decoding = false
@@ -392,4 +394,14 @@ final class Player: ObservableObject {
 
     /// the Discord switch or its options changed
     func refreshDiscord() { pushDiscord() }
+}
+
+@MainActor
+final class VolumeModel: ObservableObject { @Published var value: Float = 1 }
+
+struct VolumeSlider: View {
+    @ObservedObject var vol: VolumeModel
+    var body: some View {
+        Slider(value: Binding(get: { Double(vol.value) }, set: { Player.shared.volume = Float($0) }), in: 0...1)
+    }
 }
