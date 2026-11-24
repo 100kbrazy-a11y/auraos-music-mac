@@ -12,12 +12,14 @@ APP="dist/Strata Music.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/StrataMusic"
 
-# icon (not fatal if it can't be drawn)
-if swift scripts/make_icon.swift "$PWD/build/AppIcon.iconset" && iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"; then
-  echo "icon ok"
-else
-  echo "warning: no icon"
-fi
+# the app icon: the same picture as the Android app (assets/AppIcon.png, 1024 px)
+ICONSET=build/AppIcon.iconset; mkdir -p "$ICONSET"
+for s in 16 32 128 256 512; do
+  sips -z $s $s assets/AppIcon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+  sips -z $((s*2)) $((s*2)) assets/AppIcon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o build/AppIcon.icns
+cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,10 +51,32 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP"
+# signing: with a Developer ID certificate (SIGN_ID) the app is signed for real and notarized, so macOS never warns;
+# without one it is signed ad hoc and the first launch needs right-click > Open
+if [ -n "${SIGN_ID:-}" ]; then
+  codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+else
+  codesign --force --deep --sign - "$APP"
+fi
 codesign --verify --verbose "$APP"
 
 ( cd dist && ditto -c -k --keepParent "Strata Music.app" "Strata-Music-${VERSION}-mac.zip" )
-mkdir -p build/dmg && cp -R "$APP" build/dmg/ && ln -sf /Applications build/dmg/Applications
-hdiutil create -volname "Strata Music" -srcfolder build/dmg -ov -format UDZO "dist/Strata-Music-${VERSION}.dmg"
+
+# the installer window
+NOTE=1; [ -n "${SIGN_ID:-}" ] && NOTE=0
+swift scripts/make_dmg_background.swift build/bg.png 1 $NOTE
+swift scripts/make_dmg_background.swift build/bg@2x.png 2 $NOTE
+tiffutil -cathidpicheck build/bg.png build/bg@2x.png -out build/dmg-bg.tiff
+python3 -m venv build/venv && build/venv/bin/pip install --quiet dmgbuild
+DMG="dist/Strata-Music-${VERSION}.dmg"
+build/venv/bin/dmgbuild -s scripts/dmg_settings.py -D app="$APP" -D volicon=build/AppIcon.icns -D bg=build/dmg-bg.tiff "Strata Music" "$DMG"
+
+if [ -n "${SIGN_ID:-}" ]; then
+  codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
+  if [ -n "${APPLE_ID:-}" ]; then
+    xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+    xcrun stapler staple "$DMG"
+    xcrun stapler validate "$DMG"
+  fi
+fi
 ls -la dist

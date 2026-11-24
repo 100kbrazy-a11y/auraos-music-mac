@@ -45,7 +45,27 @@ jobs:
           open("notes.md", "w").write("## " + r["name"] + "\n\n" + "\n".join("- " + n for n in r["notes"]) + "\n\nThe app is signed ad hoc, not notarized: the first time, right-click it and choose Open (or run `xattr -cr \"/Applications/Strata Music.app\"`).\n")
           PY
 
+      - name: Developer ID certificate (only when the secrets exist)
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then echo "No certificate: ad hoc signing"; exit 0; fi
+          KC="$RUNNER_TEMP/build.keychain"; KP="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KP" "$KC"; security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KP" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" login.keychain
+          ID=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          echo "SIGN_ID=$ID" >> "$GITHUB_ENV"; echo "Signing as: $ID"
+
       - name: Build the app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: scripts/build_app.sh "${{ steps.v.outputs.version }}"
 
       - name: Smoke test (it starts and stays up)

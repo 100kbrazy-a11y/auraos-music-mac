@@ -2,6 +2,16 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.0.1",
+   "name": "The Thanksgiving Update",
+   "date": "2026-11-23",
+   "notes": [
+    "The app and the disk image now use the real Strata Music icon",
+    "A new installer window: small, big icons, a custom background and an arrow to Applications",
+    "Ready for Apple notarization: with a Developer ID the app opens with no warning at all"
+   ]
+  },
+  {
    "version": "1.0.0",
    "name": "The Thanksgiving Update",
    "date": "2026-11-23",
