@@ -198,23 +198,46 @@ final class NewReleases: ObservableObject {
 @MainActor
 final class ArtistProfiles: ObservableObject {
     static let shared = ArtistProfiles()
-    struct Profile: Codable { var bio: String; var photo: String; var blurb: String }
+    struct Profile: Codable { var bio: String; var photo: String; var blurb: String; var alt: [String]? = nil }
     @Published private(set) var cache: [String: Profile] = [:]
     private var tried = Set<String>()
 
     init() {
-        if let d = UserDefaults.standard.data(forKey: "artistProfiles"), let e = try? JSONDecoder().decode([String: Profile].self, from: d) { cache = e }
+        UserDefaults.standard.removeObject(forKey: "artistProfiles")      // the first version stored pictures that often didn't load
+        if let d = UserDefaults.standard.data(forKey: "artistProfiles2"), let e = try? JSONDecoder().decode([String: Profile].self, from: d) { cache = e }
     }
 
     func load(_ name: String) async {
         guard cache[name] == nil, !tried.contains(name), !name.isEmpty, name != "Unknown Artist" else { return }
         tried.insert(name)
+        var found: Profile?
         for cand in [name, name + " (musician)", name + " (band)", name + " (singer)", name + " (rapper)"] {
-            if let p = await Self.fetch(cand) { cache[name] = p; save(); return }
+            if let p = await Self.fetch(cand) { found = p; break }
+        }
+        let deezer = await Self.deezer(name)
+        if var p = found {
+            if let d = deezer { p.alt = (p.alt ?? []) + [d] }
+            cache[name] = p; save()
+        } else if let d = deezer {
+            cache[name] = Profile(bio: "", photo: d, blurb: "")
+            save()
         }
     }
 
-    private func save() { if let d = try? JSONEncoder().encode(cache) { UserDefaults.standard.set(d, forKey: "artistProfiles") } }
+    private func save() { if let d = try? JSONEncoder().encode(cache) { UserDefaults.standard.set(d, forKey: "artistProfiles2") } }
+
+    /// Deezer's picture of the artist, for artists Wikipedia has no photo of
+    private nonisolated static func deezer(_ name: String) async -> String? {
+        var c = URLComponents(string: "https://api.deezer.com/search/artist")!
+        c.queryItems = [URLQueryItem(name: "q", value: name), URLQueryItem(name: "limit", value: "5")]
+        guard let u = c.url, let (d, _) = try? await URLSession.shared.data(from: u),
+              let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let list = j["data"] as? [[String: Any]] else { return nil }
+        func fold(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+        let f = fold(name)
+        guard let hit = list.first(where: { fold(($0["name"] as? String) ?? "") == f }) else { return nil }
+        let pic = (hit["picture_xl"] as? String) ?? (hit["picture_big"] as? String) ?? ""
+        return pic.isEmpty || pic.contains("/artist//") ? nil : pic     // Deezer's grey placeholder has an empty id in its address
+    }
 
     private nonisolated static func fetch(_ title: String) async -> Profile? {
         let slug = title.replacingOccurrences(of: " ", with: "_")
@@ -228,9 +251,12 @@ final class ArtistProfiles: ObservableObject {
         let extract = (j["extract"] as? String) ?? ""
         let music = "singer|rapper|musician|band|group|songwriter|record producer|disc jockey|DJ|composer|vocalist|duo|trio|pianist|guitarist|drummer|music"
         guard desc.range(of: music, options: [.regularExpression, .caseInsensitive]) != nil || extract.prefix(300).range(of: "(singer|rapper|musician|band|songwriter|composer)", options: [.regularExpression, .caseInsensitive]) != nil else { return nil }
-        var photo = ((j["thumbnail"] as? [String: Any])?["source"] as? String) ?? ""
-        if let r = photo.range(of: "/\\d+px-", options: .regularExpression), photo.contains("/thumb/") { photo.replaceSubrange(r, with: "/1000px-") }
-        return Profile(bio: extract, photo: photo, blurb: desc)
+        let thumb = ((j["thumbnail"] as? [String: Any])?["source"] as? String) ?? ""
+        var photo = thumb
+        // a bigger copy is only asked for when the original is big enough (Wikipedia refuses to enlarge a picture)
+        let originalWidth = ((j["originalimage"] as? [String: Any])?["width"] as? Int) ?? 0
+        if originalWidth >= 1000, let r = photo.range(of: "/\\d+px-", options: .regularExpression), photo.contains("/thumb/") { photo.replaceSubrange(r, with: "/1000px-") }
+        return Profile(bio: extract, photo: photo, blurb: desc, alt: thumb.isEmpty || thumb == photo ? nil : [thumb])
     }
 }
 

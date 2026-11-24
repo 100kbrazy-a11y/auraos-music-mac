@@ -447,29 +447,58 @@ extension View {
     }
 }
 
-/// a web picture that is downloaded once, shrunk to the size it's shown at, and remembered
+/// downloads a web picture once, shrinks it to the size it's shown at, and remembers it
+enum WebImage {
+    static let cache: NSCache<NSString, NSImage> = { let c = NSCache<NSString, NSImage>(); c.countLimit = 400; return c }()
+    static func key(_ u: URL, _ px: Int) -> NSString { "\(u.absoluteString)|\(px)" as NSString }
+
+    static func load(_ u: URL, pixels px: Int) async -> NSImage? {
+        let k = key(u, px)
+        if let c = cache.object(forKey: k) { return c }
+        let out: NSImage? = await Task.detached(priority: .utility) { () -> NSImage? in
+            var req = URLRequest(url: u, timeoutInterval: 20)
+            req.setValue("StrataMusic/2 (macOS music app)", forHTTPHeaderField: "User-Agent")
+            guard let (d, r) = try? await URLSession.shared.data(for: req), (r as? HTTPURLResponse)?.statusCode == 200,
+                  let src = CGImageSourceCreateWithData(d as CFData, nil),
+                  let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: px] as CFDictionary) else { return nil }
+            return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        }.value
+        if let out = out { cache.setObject(out, forKey: k) }
+        return out
+    }
+}
+
 struct CachedThumb: View {
     let url: URL
     let pixels: Int
     @State private var img: NSImage?
-    private static let cache: NSCache<NSString, NSImage> = { let c = NSCache<NSString, NSImage>(); c.countLimit = 400; return c }()
-
-    private var key: NSString { "\(url.absoluteString)|\(pixels)" as NSString }
 
     var body: some View {
         Group {
-            if let i = img ?? Self.cache.object(forKey: key) { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) }
+            if let i = img ?? WebImage.cache.object(forKey: WebImage.key(url, pixels)) { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) }
             else { Color(white: 0.16) }
         }
-        .task(id: url) {
-            if Self.cache.object(forKey: key) != nil { return }
-            let k = key, u = url, px = pixels
-            let out: NSImage? = await Task.detached(priority: .utility) { () -> NSImage? in
-                guard let (d, _) = try? await URLSession.shared.data(from: u), let src = CGImageSourceCreateWithData(d as CFData, nil),
-                      let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: px] as CFDictionary) else { return nil }
-                return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-            }.value
-            if let out = out { Self.cache.setObject(out, forKey: k); img = out }
+        .task(id: url) { img = await WebImage.load(url, pixels: pixels) }
+    }
+}
+
+/// a wide picture that tries each address in turn (the first one that loads is used) and shows [fallback] while loading or if none do
+struct BannerImage<Fallback: View>: View {
+    let urls: [String]
+    @ViewBuilder var fallback: () -> Fallback
+    @State private var img: NSImage?
+
+    var body: some View {
+        ZStack {
+            fallback()
+            if let img = img { Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).transition(.opacity) }
+        }
+        .task(id: urls) {
+            img = nil
+            for s in urls {
+                guard let u = URL(string: s) else { continue }
+                if let i = await WebImage.load(u, pixels: 1600) { withAnimation(.easeOut(duration: 0.25)) { img = i }; return }
+            }
         }
     }
 }

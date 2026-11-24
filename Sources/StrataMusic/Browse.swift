@@ -355,11 +355,7 @@ struct ArtistDetail: View {
     private func header(_ a: ArtistInfo, _ profile: ArtistProfiles.Profile?) -> some View {
         ZStack(alignment: .bottomLeading) {
             Group {
-                if let p = profile?.photo, !p.isEmpty, let u = URL(string: p) {
-                    AsyncImage(url: u) { ph in
-                        if let img = ph.image { img.resizable().aspectRatio(contentMode: .fill) } else { fallbackBanner(a) }
-                    }
-                } else { fallbackBanner(a) }
+                BannerImage(urls: ([profile?.photo ?? ""] + (profile?.alt ?? [])).filter { !$0.isEmpty }) { fallbackBanner(a) }
             }
             .frame(maxWidth: .infinity).frame(height: 280).clipped()
             LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)

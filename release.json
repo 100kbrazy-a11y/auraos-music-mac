@@ -2,6 +2,14 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.4.2",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Artist banners: pictures that failed to load are now retried from another address, and artists with no Wikipedia photo get one from Deezer. Until a photo loads (or if none does) the banner shows a soft copy of the artist's cover"
+   ]
+  },
+  {
    "version": "2.4.1",
    "name": "The Macster Update",
    "date": "2026-11-24",
