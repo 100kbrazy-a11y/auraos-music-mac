@@ -26,7 +26,8 @@ enum CrashGuard {
     /// call once at launch: true when the last run never reached a clean quit
     static func begin() -> Bool {
         let crashed = FileManager.default.fileExists(atPath: flag.path)
-        try? "\(Date().timeIntervalSince1970) \(Updater.current)".write(to: flag, atomically: true, encoding: .utf8)
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        try? "\(Date().timeIntervalSince1970) \(v)".write(to: flag, atomically: true, encoding: .utf8)
         return crashed
     }
     static func end() { try? FileManager.default.removeItem(at: flag) }
