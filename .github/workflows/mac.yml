@@ -116,4 +116,6 @@ jobs:
           if [ -z "$X" ]; then X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1); fi
           sudo xcode-select -s "$X/Contents/Developer"
       - name: swift test
-        run: swift test 2>&1 | tail -60
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tail -60

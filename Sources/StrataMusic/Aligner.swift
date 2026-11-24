@@ -64,7 +64,10 @@ enum Syllables {
         let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
         let letters = t.filter { $0.isLetter }
         guard !letters.isEmpty else { return 1 }
-        let plain = t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        // an accented e is always sounded ("café"), so it isn't a silent final e once the accent is gone
+        var sounded = t
+        for c in ["é", "è", "ê", "ë", "É", "È", "Ê", "Ë"] { sounded = sounded.replacingOccurrences(of: c, with: "ey") }
+        let plain = sounded.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
         let ascii = plain.unicodeScalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
         if ascii == 0 || plain.unicodeScalars.contains(where: { $0.value > 0x24F && CharacterSet.letters.contains($0) }) { return max(1, letters.count) }
         return Int(strata_voice_syllables(plain))

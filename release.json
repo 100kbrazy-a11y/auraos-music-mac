@@ -2,6 +2,14 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.9.2",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Word timing counts words that end in an accented e (café, résumé) correctly."
+   ]
+  },
+  {
    "version": "2.9.1",
    "name": "The Macster Update",
    "date": "2026-11-24",
