@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.9.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Word timing now counts the syllables in every word (silent e, -ing, -ed, contractions like couldn't, and odd words like everyone) and looks for each syllable's start in the singing.",
+    "Stutters and repeats like \"eh eh everyone\", \"la la la\" and \"I I I can't stop\" are timed one by one: repeated words are expected to be quick, and when too few syllable starts show up, Strata looks again more closely.",
+    "The last note of a line is allowed to be held a little longer.",
+    "Words still stay inside their own line's time from the lyrics file."
+   ]
+  },
+  {
    "version": "2.8.1",
    "name": "The Macster Update",
    "date": "2026-11-24",

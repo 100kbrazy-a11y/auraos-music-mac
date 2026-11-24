@@ -169,9 +169,99 @@ fail:
     return NULL;
 }
 
-int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, double *starts, double *end) {
+// Syllable starts inside the singing [s, e]: places where the voice swells (a new note or word), and loudness peaks taken back to where they started to swell.
+// A sensitive pass (smaller steps count, peaks closer together) is for lines with stutters ("eh eh everyone") where the normal pass finds too few.
+static int gather(const strata_voice *v, int s, int e, int sensitive, double *cand, double *strength, int cap) {
+    int T = v->frames, Nc = 0;
+    const float fluxFrac = sensitive ? 0.09f : 0.2f, promMin = sensitive ? 0.6f : 1.2f;
+    const int radius = sensitive ? 1 : 2;
+    const double merge = sensitive ? 0.045 : 0.07;
+    float fmax = 1e-6f;
+    for (int t = s; t <= e; t++) if (v->flux[t] > fmax) fmax = v->flux[t];
+    for (int t = s; t <= e && Nc < cap - 1; t++) {            // swells
+        float x = v->flux[t];
+        if (x < fluxFrac * fmax) continue;
+        int ok = 1;
+        for (int d = 1; d <= radius; d++) {
+            int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
+            if (v->flux[a] > x || v->flux[b] > x) { ok = 0; break; }
+        }
+        if (!ok) continue;
+        cand[Nc] = time_of(v, t) - 0.5 * v->frame_s; strength[Nc] = x / fmax > 1 ? 1 : x / fmax; Nc++;
+    }
+    for (int t = s; t <= e && Nc < cap - 1; t++) {            // loudness peaks
+        float x = v->level[t];
+        int ok = 1;
+        for (int d = 1; d <= radius; d++) {
+            int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
+            if (v->level[a] > x || v->level[b] > x) { ok = 0; break; }
+        }
+        if (!ok) continue;
+        float lmin = x, rmin = x;
+        int vt = t;
+        for (int d = 1; d <= 6; d++) {
+            int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
+            if (v->level[a] < lmin) { lmin = v->level[a]; vt = a; }
+            if (v->level[b] < rmin) rmin = v->level[b];
+        }
+        float prom = x - (lmin > rmin ? lmin : rmin);
+        if (prom < promMin) continue;
+        int on = vt; float best = -1;
+        for (int u = vt; u <= t; u++) if (v->flux[u] > best) { best = v->flux[u]; on = u; }
+        cand[Nc] = time_of(v, on) - 0.5 * v->frame_s; strength[Nc] = prom / 8 > 1 ? 1 : prom / 8; Nc++;
+    }
+    for (int i = 1; i < Nc; i++) {                              // in time order
+        double ct = cand[i], cs = strength[i]; int j = i;
+        while (j > 0 && cand[j - 1] > ct) { cand[j] = cand[j - 1]; strength[j] = strength[j - 1]; j--; }
+        cand[j] = ct; strength[j] = cs;
+    }
+    int m = 0;                                                  // two starts closer than [merge] are one
+    for (int i = 0; i < Nc; i++) {
+        if (m > 0 && cand[i] - cand[m - 1] < merge) { if (strength[i] > strength[m - 1]) { cand[m - 1] = cand[i]; strength[m - 1] = strength[i]; } continue; }
+        cand[m] = cand[i]; strength[m] = strength[i]; m++;
+    }
+    return m;
+}
+
+// Lines the syllables up with the starts found: a gap-allowing match that likes starts near where the syllables are expected (by their weights).
+static int match(int Ns, const double *cand, const double *strength, int Nc, const double *exp_t, double scale, double *tsyl, int *matched) {
+    int nmatch = 0;
+    if (Nc <= 0) return 0;
+    size_t W = (size_t)Nc + 1;
+    float *F = malloc(sizeof(float) * (size_t)(Ns + 1) * W);
+    unsigned char *B = malloc((size_t)(Ns + 1) * W);
+    if (F && B) {
+        const float skipS = 1.2f;
+        F[0] = 0; B[0] = 0;
+        for (int c = 1; c <= Nc; c++) { F[c] = F[c - 1] + 0.4f + 0.3f * (float)strength[c - 1]; B[c] = 2; }
+        for (int j = 1; j <= Ns; j++) {
+            F[(size_t)j * W] = F[(size_t)(j - 1) * W] + skipS; B[(size_t)j * W] = 1;
+            double ej = exp_t[j - 1];
+            for (int c = 1; c <= Nc; c++) {
+                double d = (cand[c - 1] - ej) / scale;
+                float m = F[(size_t)(j - 1) * W + (c - 1)] + (float)(d * d - 0.6 * strength[c - 1]);
+                float a = F[(size_t)(j - 1) * W + c] + skipS;
+                float b = F[(size_t)j * W + (c - 1)] + 0.4f + 0.3f * (float)strength[c - 1];
+                float best = m; unsigned char how = 0;
+                if (a < best) { best = a; how = 1; }
+                if (b < best) { best = b; how = 2; }
+                F[(size_t)j * W + c] = best; B[(size_t)j * W + c] = how;
+            }
+        }
+        int j = Ns, c = Nc;
+        while (j > 0 && c > 0) {
+            unsigned char how = B[(size_t)j * W + c];
+            if (how == 0) { tsyl[j - 1] = cand[c - 1]; matched[j - 1] = 1; nmatch++; j--; c--; }
+            else if (how == 1) j--;
+            else c--;
+        }
+    }
+    free(F); free(B);
+    return nmatch;
+}
+
+int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *end) {
     if (!v || n_words <= 0 || we <= ws) return 0;
-    int T = v->frames;
     int w0 = frame_of(v, ws), w1 = frame_of(v, we);
     if (w1 - w0 < 8) return 0;
 
@@ -183,129 +273,62 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
     int e = s;
     for (int t = w1 - 1; t > s; t--) if (v->level[t] > v->thr && v->level[t - 1] > v->thr) { e = t; break; }
     if (e - s < 6) return 0;
-    int Ns0 = 0;
-    for (int i = 0; i < n_words; i++) Ns0 += syll[i] < 1 ? 1 : syll[i];
+    int Ns = 0;
+    for (int i = 0; i < n_words; i++) Ns += syll[i] < 1 ? 1 : syll[i];
     // the stamp is a good guide to where the line starts, and a line has only so many syllables to sing: don't let a held instrument stretch it
     double ts = time_of(v, s) - 0.5 * v->frame_s, te = time_of(v, e) + 0.5 * v->frame_s;
     if (ts < base - 0.2) { ts = base - 0.2; s = frame_of(v, ts); }   // a breath, an ad-lib or the end of the line before doesn't start this one
-    double longest = 0.9 * Ns0 + 0.8;
+    double longest = 0.9 * Ns + 0.8;
     if (te - ts > longest) { te = ts + longest; e = frame_of(v, te); }
     if (e - s < 6) return 0;
     if (end) *end = te;
-
-    int Ns = 0;
-    for (int i = 0; i < n_words; i++) Ns += syll[i] < 1 ? 1 : syll[i];
     if (Ns > MAXSYL) Ns = MAXSYL;
 
-    // syllable starts in the singing: places where the voice swells (a new note or word), and loudness peaks taken back to where they started to swell
-    double cand[MAXCAND], strength[MAXCAND];
-    int Nc = 0;
+    // how long each syllable is expected to take: a stutter or a repeated "la la" is quick, and the last note of a line is held
+    double wt[MAXSYL];
     {
-        float fmax = 1e-6f;
-        for (int t = s; t <= e; t++) if (v->flux[t] > fmax) fmax = v->flux[t];
-        for (int t = s; t <= e && Nc < MAXCAND - 1; t++) {            // swells
-            float x = v->flux[t];
-            if (x < 0.2f * fmax) continue;
-            int ok = 1;
-            for (int d = 1; d <= 2; d++) {
-                int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
-                if (v->flux[a] > x || v->flux[b] > x) { ok = 0; break; }
-            }
-            if (!ok) continue;
-            cand[Nc] = time_of(v, t) - 0.5 * v->frame_s; strength[Nc] = x / fmax > 1 ? 1 : x / fmax; Nc++;
+        int j = 0;
+        for (int i = 0; i < n_words && j < Ns; i++) {
+            int sy = syll[i] < 1 ? 1 : syll[i];
+            for (int k = 0; k < sy && j < Ns; k++) wt[j++] = (quick && quick[i]) ? 0.55 : 1.0;
         }
-        for (int t = s; t <= e && Nc < MAXCAND - 1; t++) {            // loudness peaks
-            float x = v->level[t];
-            int ok = 1;
-            for (int d = 1; d <= 2; d++) {
-                int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
-                if (v->level[a] > x || v->level[b] > x) { ok = 0; break; }
-            }
-            if (!ok) continue;
-            float lmin = x, rmin = x;
-            int vt = t;
-            for (int d = 1; d <= 6; d++) {
-                int a = t - d < 0 ? 0 : t - d, b = t + d >= T ? T - 1 : t + d;
-                if (v->level[a] < lmin) { lmin = v->level[a]; vt = a; }
-                if (v->level[b] < rmin) rmin = v->level[b];
-            }
-            float prom = x - (lmin > rmin ? lmin : rmin);
-            if (prom < 1.2f) continue;
-            int on = vt; float best = -1;
-            for (int u = vt; u <= t; u++) if (v->flux[u] > best) { best = v->flux[u]; on = u; }
-            cand[Nc] = time_of(v, on) - 0.5 * v->frame_s; strength[Nc] = prom / 8 > 1 ? 1 : prom / 8; Nc++;
-        }
-        // in time order, and two starts closer than 70 ms are one
-        for (int i = 1; i < Nc; i++) {
-            double ct = cand[i], cs = strength[i]; int j = i;
-            while (j > 0 && cand[j - 1] > ct) { cand[j] = cand[j - 1]; strength[j] = strength[j - 1]; j--; }
-            cand[j] = ct; strength[j] = cs;
-        }
-        int m = 0;
-        for (int i = 0; i < Nc; i++) {
-            if (m > 0 && cand[i] - cand[m - 1] < 0.07) { if (strength[i] > strength[m - 1]) { cand[m - 1] = cand[i]; strength[m - 1] = strength[i]; } continue; }
-            cand[m] = cand[i]; strength[m] = strength[i]; m++;
-        }
-        Nc = m;
+        wt[Ns - 1] *= 1.2;
     }
-
-#ifdef STRATA_DEBUG
-    fprintf(stderr, "region %.2f-%.2f Ns=%d Nc=%d:", ts, te, Ns, Nc); for (int c = 0; c < Nc; c++) fprintf(stderr, " %.2f(%.2f)", cand[c], strength[c]); fprintf(stderr, "\n");
-#endif
-    // line the syllables up with the starts found: a gap-allowing match that likes starts near where an even spread would put them
+    double cum[MAXSYL + 1];
+    cum[0] = 0;
+    for (int j = 0; j < Ns; j++) cum[j + 1] = cum[j] + wt[j];
     double dur = te - ts;
-    double avg = dur / (Ns > 0 ? Ns : 1);
-    double scale = 1.5 * avg + 0.1;
-    double tsyl[MAXSYL];
+    double exp_t[MAXSYL], tsyl[MAXSYL];
     int matched[MAXSYL];
-    for (int j = 0; j < Ns; j++) { tsyl[j] = ts + dur * j / Ns; matched[j] = 0; }
-    int nmatch = 0;
-    if (Nc > 0) {
-        size_t W = (size_t)Nc + 1;
-        float *F = malloc(sizeof(float) * (size_t)(Ns + 1) * W);
-        unsigned char *B = malloc((size_t)(Ns + 1) * W);
-        if (F && B) {
-            const float skipS = 1.2f;
-            F[0] = 0; B[0] = 0;
-            for (int c = 1; c <= Nc; c++) { F[c] = F[c - 1] + 0.4f + 0.3f * (float)strength[c - 1]; B[c] = 2; }
-            for (int j = 1; j <= Ns; j++) {
-                F[(size_t)j * W] = F[(size_t)(j - 1) * W] + skipS; B[(size_t)j * W] = 1;
-                double ej = ts + dur * (j - 1) / Ns;
-                for (int c = 1; c <= Nc; c++) {
-                    double d = (cand[c - 1] - ej) / scale;
-                    float m = F[(size_t)(j - 1) * W + (c - 1)] + (float)(d * d - 0.6 * strength[c - 1]);
-                    float a = F[(size_t)(j - 1) * W + c] + skipS;
-                    float b = F[(size_t)j * W + (c - 1)] + 0.4f + 0.3f * (float)strength[c - 1];
-                    float best = m; unsigned char how = 0;
-                    if (a < best) { best = a; how = 1; }
-                    if (b < best) { best = b; how = 2; }
-                    F[(size_t)j * W + c] = best; B[(size_t)j * W + c] = how;
-                }
-            }
-            int j = Ns, c = Nc;
-            while (j > 0 && c > 0) {
-                unsigned char how = B[(size_t)j * W + c];
-                if (how == 0) { tsyl[j - 1] = cand[c - 1]; matched[j - 1] = 1; nmatch++; j--; c--; }
-                else if (how == 1) j--;
-                else c--;
-            }
-        }
-        free(F); free(B);
-    }
+    for (int j = 0; j < Ns; j++) { exp_t[j] = ts + dur * cum[j] / cum[Ns]; tsyl[j] = exp_t[j]; matched[j] = 0; }
+    double scale = 1.5 * (dur / (Ns > 0 ? Ns : 1)) + 0.1;
 
+    double cand[MAXCAND], strength[MAXCAND];
+    int Nc = gather(v, s, e, 0, cand, strength, MAXCAND);
+    int nmatch = match(Ns, cand, strength, Nc, exp_t, scale, tsyl, matched);
+    if (nmatch < Ns * 4 / 5 && Nc < Ns * 3 / 2) {          // too few starts for the syllables: look harder (stutters), keep it if it matches more
+        double cand2[MAXCAND], strength2[MAXCAND], tsyl2[MAXSYL];
+        int matched2[MAXSYL];
+        int Nc2 = gather(v, s, e, 1, cand2, strength2, MAXCAND);
+        for (int j = 0; j < Ns; j++) { tsyl2[j] = exp_t[j]; matched2[j] = 0; }
+        int nm2 = match(Ns, cand2, strength2, Nc2, exp_t, scale, tsyl2, matched2);
+        if (nm2 > nmatch) { nmatch = nm2; Nc = Nc2; for (int j = 0; j < Ns; j++) { tsyl[j] = tsyl2[j]; matched[j] = matched2[j]; } }
+    }
+#ifdef STRATA_DEBUG
+    fprintf(stderr, "region %.2f-%.2f Ns=%d Nc=%d matched=%d\n", ts, te, Ns, Nc, nmatch);
+#endif
     int quality = 1;
     if (nmatch >= (Ns * 2 + 4) / 5 && nmatch >= 2) {
         quality = 2;
-        // unmatched syllables sit evenly between the matched ones around them
+        // unmatched syllables sit between the matched ones around them, in proportion to how long each is expected to take
         int prev = -1;
         for (int j = 0; j <= Ns; j++) {
             if (j < Ns && !matched[j]) continue;
-            int next = j;
-            double tn = next < Ns ? tsyl[next] : te;
+            double tn = j < Ns ? tsyl[j] : te;
             double tp = prev >= 0 ? tsyl[prev] : ts;
-            int from = prev + 1;
-            for (int q = from; q < next; q++) {
-                double f = (double)(q - (prev < 0 ? -1 : prev)) / (double)(next - (prev < 0 ? -1 : prev));
+            double c0 = prev >= 0 ? cum[prev] : 0, c1 = j < Ns ? cum[j] : cum[Ns];
+            for (int q = prev + 1; q < j; q++) {
+                double f = c1 > c0 ? (cum[q] - c0) / (c1 - c0) : 0;
                 tsyl[q] = tp + (tn - tp) * f;
             }
             prev = j;

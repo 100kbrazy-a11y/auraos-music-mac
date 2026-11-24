@@ -57,20 +57,31 @@ enum PCM22k {
     }
 }
 
-/// how many syllables a word has (a good guess for English and the like; one per character for scripts without spaces)
+/// how many syllables a word has, and which words are sung fast and short
 enum Syllables {
+    /// English-like words go through the C counter (silent e, "-ing", "-ed", a table of oddities like "everyone"); scripts without spaces get one per character
     static func count(_ w: String) -> Int {
         let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
         let letters = t.filter { $0.isLetter }
         guard !letters.isEmpty else { return 1 }
-        if t.unicodeScalars.contains(where: { $0.value > 0x24F }) { return max(1, letters.count) }
-        let vowels = Set("aeiouyáàâäãåéèêëíìîïóòôöõúùûüœæ")
-        var groups = 0, inGroup = false
-        for ch in letters.lowercased() { if vowels.contains(ch) { if !inGroup { groups += 1; inGroup = true } } else { inGroup = false } }
-        let lower = letters.lowercased()
-        if groups > 1, lower.hasSuffix("e"), !lower.hasSuffix("le") { groups -= 1 }
-        if lower.hasSuffix("ed") && groups > 1 && !(lower.hasSuffix("ted") || lower.hasSuffix("ded")) { groups -= 1 }
-        return max(groups, 1)
+        let plain = t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        let ascii = plain.unicodeScalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
+        if ascii == 0 || plain.unicodeScalars.contains(where: { $0.value > 0x24F && CharacterSet.letters.contains($0) }) { return max(1, letters.count) }
+        return Int(strata_voice_syllables(plain))
+    }
+
+    /// what a word is, for spotting a repeat
+    static func key(_ w: String) -> String {
+        w.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).filter { $0.isLetter }
+    }
+
+    /// 1 for a word that repeats the one before or after it ("eh eh", "la la la", "I I I"): those are sung quickly, so they get a shorter share of the line
+    static func quick(_ parts: [String]) -> [Int32] {
+        let k = parts.map(key)
+        return (0..<k.count).map { (i: Int) -> Int32 in
+            guard !k[i].isEmpty else { return 0 }
+            return (i > 0 && k[i] == k[i - 1]) || (i + 1 < k.count && k[i] == k[i + 1]) ? 1 : 0
+        }
     }
 }
 
@@ -130,9 +141,10 @@ enum Aligner {
             var starts: [Double]? = nil
             if let w = window(lines, i, offset: offset, seconds: seconds), !parts.isEmpty {
                 var syll = parts.map { Int32(Syllables.count($0)) }
+                var quick = Syllables.quick(parts)
                 var s = [Double](repeating: 0, count: parts.count)
                 var end = 0.0
-                let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &s, &end)
+                let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &quick, &s, &end)
                 if q > 0 { starts = s }
             }
             if var s = starts {
