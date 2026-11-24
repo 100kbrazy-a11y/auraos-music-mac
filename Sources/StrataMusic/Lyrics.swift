@@ -222,7 +222,26 @@ final class LyricsStore: ObservableObject {
         return (plain.trimmingCharacters(in: .whitespaces), words)
     }
 
-    /// no word timings in the file: spread the words over the line, longer words taking longer
+    /// how many beats a word takes to sing: syllables for letters we can count, one per character for scripts without spaces
+    private static func weight(_ w: String) -> Double {
+        let t = w.trimmingCharacters(in: .whitespacesAndNewlines)
+        let letters = t.filter { $0.isLetter }
+        guard !letters.isEmpty else { return 0.4 }
+        if t.unicodeScalars.contains(where: { $0.value > 0x24F }) { return Double(letters.count) }
+        let vowels = Set("aeiouyáàâäãåéèêëíìîïóòôöõúùûüœæ")
+        var groups = 0, inGroup = false
+        for ch in letters.lowercased() { if vowels.contains(ch) { if !inGroup { groups += 1; inGroup = true } } else { inGroup = false } }
+        let lower = letters.lowercased()
+        if groups > 1, lower.hasSuffix("e"), !lower.hasSuffix("le") { groups -= 1 }      // a silent final e
+        if lower.hasSuffix("ed") && groups > 1 && !(lower.hasSuffix("ted") || lower.hasSuffix("ded")) { groups -= 1 }
+        var w = Double(max(groups, 1))
+        if t.hasSuffix(",") || t.hasSuffix(";") { w += 0.5 }
+        if t.hasSuffix(".") || t.hasSuffix("!") || t.hasSuffix("?") || t.hasSuffix("…") { w += 0.9 }
+        return w
+    }
+
+    /// no word timings in the file: the words are spread over the part of the line that is actually sung. A line that runs into the next one
+    /// fills the gap (less a breath); a line followed by a long pause is sung at a natural pace and then stops.
     static func estimate(_ text: String, from a: Double, to b: Double) -> [LyricWord] {
         guard !text.isEmpty else { return [] }
         var pieces: [String]
@@ -232,9 +251,12 @@ final class LyricsStore: ObservableObject {
         } else {
             pieces = text.map { String($0) }
         }
-        let span = min(max(b - a, 0.6), 8) * 0.9
-        let weights = pieces.map { Double(max($0.trimmingCharacters(in: .whitespaces).count, 1)) + 1 }
+        var weights = pieces.map { weight($0) }
+        if let last = weights.indices.last { weights[last] += 0.6 }          // the last note of a line is usually held
         let total = weights.reduce(0, +)
+        let gap = max(b - a, 0.5)
+        let natural = total * 0.26 + 0.25
+        let span = gap <= natural * 1.7 ? max(gap - 0.18, gap * 0.8) : min(gap * 0.9, natural * 1.3)
         var acc = 0.0
         var out: [LyricWord] = []
         for (i, p) in pieces.enumerated() {

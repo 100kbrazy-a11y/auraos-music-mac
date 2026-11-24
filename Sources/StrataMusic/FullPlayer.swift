@@ -279,6 +279,7 @@ struct SyncedLyrics: View {
     @AppStorage("lyricsRomanize") private var romanize = false
     @AppStorage("lyricsTranslate") private var translate = false
     @State private var cur = -1
+    @State private var focus = 0.0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -289,17 +290,18 @@ struct SyncedLyrics: View {
                         let on = l.id == cur
                         VStack(alignment: .leading, spacing: 4) {
                             if on && wordMode && !l.words.isEmpty {
-                                LiveLine(line: l, clock: clock, offset: store.offset).font(.system(size: 34, weight: .heavy))
+                                LiveLine(line: l, clock: clock, offset: store.offset, size: 34, playing: player.isPlaying)
+                                    .font(.system(size: 34, weight: .heavy))
                             } else {
                                 LyricLineText(line: l, t: 0, active: false, words: false).font(.system(size: 34, weight: .heavy))
+                                    .foregroundStyle(Color.white)
                             }
                             if romanize, let r = LyricsFilter.romanize(l.text) { Text(LyricsFilter.clean(r)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
                             if translate, let tr = store.translated[l.id] { Text(LyricsFilter.clean(tr)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
                         }
-                        .foregroundStyle(Color.white.opacity(on ? 1 : (l.id < cur ? 0.28 : 0.4)))
-                        .scaleEffect(on ? 1 : 0.94, anchor: .leading)
-                        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: on)
+                        .foregroundStyle(Color.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(CarouselEffect(index: l.id, focus: focus))
                         .contentShape(Rectangle())
                         .onTapGesture { player.seek(to: l.time + store.offset) }
                         .id(l.id)
@@ -314,22 +316,16 @@ struct SyncedLyrics: View {
                 let i = store.index(at: p)
                 if i != cur { cur = i }
             }
-            .onAppear { cur = store.index(at: clock.position) }
+            .onAppear { cur = store.index(at: clock.position); focus = Double(max(cur, 0)) }
             .onChange(of: cur) { i in
                 guard i >= 0 else { return }
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { proxy.scrollTo(i, anchor: UnitPoint(x: 0.5, y: 0.35)) }
+                // the wheel turns with a little bounce, and the page follows it
+                withAnimation(.spring(response: 0.62, dampingFraction: 0.62)) { focus = Double(i) }
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { proxy.scrollTo(i, anchor: UnitPoint(x: 0.5, y: 0.35)) }
             }
         }
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
     }
-}
-
-/// the line being sung, lit word by word
-private struct LiveLine: View {
-    let line: LyricLine
-    @ObservedObject var clock: Clock
-    let offset: Double
-    var body: some View { LyricLineText(line: line, t: clock.position + 0.2 - offset, active: true, words: true) }
 }
 
 // MARK: - Artist

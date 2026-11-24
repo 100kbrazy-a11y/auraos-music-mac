@@ -1,11 +1,19 @@
 import Foundation
 import AVFoundation
 import MediaPlayer
+import QuartzCore
 import SwiftUI
 
 /// the play position lives on its own object: only the views that show it redraw four times a second, not the whole app
 final class Clock: ObservableObject {
-    @Published var position: Double = 0
+    @Published var position: Double = 0 { didSet { anchor = CACurrentMediaTime() } }
+    /// 1 (or the chosen speed) while a song plays, 0 when paused
+    var rate: Double = 0
+    private var anchor = CACurrentMediaTime()
+
+    /// the position right now. The players only report it a few times a second; between reports this carries on at the playing speed,
+    /// so things that need to be exact (the word being sung) don't step.
+    var live: Double { rate > 0 ? position + (CACurrentMediaTime() - anchor) * rate : position }
 }
 
 @MainActor
@@ -15,7 +23,7 @@ final class Player: ObservableObject {
     @Published private(set) var queue: [Song] = []
     @Published private(set) var index = 0
     @Published private(set) var current: Song?
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false { didSet { clock.rate = isPlaying ? Double(speed) : 0 } }
     @Published private(set) var accent: Color = Theme.accent
     @Published var shuffle = false { didSet { reshuffle() } }
     @Published var repeatMode = 0                      // 0 off, 1 all, 2 one
@@ -23,7 +31,7 @@ final class Player: ObservableObject {
     let vol = VolumeModel()
     var volume: Float { get { vol.value } set { vol.value = newValue; setOutVolume(newValue) } }
     /// 0.5x to 2x
-    @Published var speed: Float = 1 { didSet { avp.defaultRate = speed; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
+    @Published var speed: Float = 1 { didSet { clock.rate = isPlaying ? Double(speed) : 0; avp.defaultRate = speed; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
     @Published private(set) var decoding = false
     /// the sleep timer: stops the music at [sleepEnd], or when the current song ends
     @Published private(set) var sleepEnd: Date?

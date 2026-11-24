@@ -65,7 +65,7 @@ private struct DesktopLine: View {
 
     var body: some View {
         let cur = store.index(at: clock.position)
-        let t = clock.position + 0.2 - store.offset
+        let t = clock.live + 0.05 - store.offset
         VStack(spacing: 4) {
             if store.synced, store.lines.indices.contains(cur) {
                 LyricLineText(line: store.lines[cur], t: t, active: true, words: wordMode)

@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.5.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Lyrics: the word being sung fills in left to right at the speed it is sung and is a little bigger. The highlight follows the player's clock smoothly instead of in steps",
+    "Lyrics without word timings get better guesses: words are timed by syllables, with pauses at commas and full stops, and a line followed by a long pause no longer stretches across it",
+    "The lines that aren't being sung sit on a gentle curve to the left, like a wheel. They get smaller, dimmer and turn away a little, and the wheel turns with a bounce when the line changes",
+    "Lyric files are unchanged, so they still work in other Strata versions (word-timed .lrc files give exact timing; others use the new guess)"
+   ]
+  },
+  {
    "version": "2.4.3",
    "name": "The Macster Update",
    "date": "2026-11-24",
