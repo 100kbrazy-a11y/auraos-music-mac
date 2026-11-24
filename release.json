@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.10.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "New: Lyrics menu > \"Export a piece of this song…\". Drag across the song's timeline to choose a part (up to 2 minutes); Strata saves one zip in Downloads with that audio, the lyrics as they were found, the lyrics with Strata's word timing, and a report of how every line and word was timed there. Handy when a spot looks wrong.",
+    "The lyrics menu button moved to the top right: the same glass circle as the close button, on the opposite side."
+   ]
+  },
+  {
    "version": "2.9.2",
    "name": "The Macster Update",
    "date": "2026-11-24",

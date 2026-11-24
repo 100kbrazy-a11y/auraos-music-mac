@@ -18,18 +18,28 @@ struct AlignError: LocalizedError {
 enum PCM22k {
     static let rate = 22050
 
-    static func load(_ url: URL) throws -> (left: [Float], right: [Float]) {
+    /// the whole song, or just the part from [from] to [to] seconds
+    static func load(_ url: URL, from: Double? = nil, to: Double? = nil) throws -> (left: [Float], right: [Float]) {
         let file = try AVAudioFile(forReading: url)
         let inFmt = file.processingFormat
         guard inFmt.sampleRate > 0, file.length > 0 else { throw AlignError("This file's audio can't be read") }
-        guard Double(file.length) / inFmt.sampleRate < 15 * 60 else { throw AlignError("This song is too long to analyse (over 15 minutes)") }
+        var remaining = file.length
+        if from != nil || to != nil {
+            let start = min(file.length, AVAudioFramePosition(max(0, from ?? 0) * inFmt.sampleRate))
+            let stop = min(file.length, AVAudioFramePosition(max(0, to ?? Double.greatestFiniteMagnitude / 4) * inFmt.sampleRate))
+            guard stop > start else { throw AlignError("Nothing to read there") }
+            file.framePosition = start
+            remaining = stop - start
+        } else {
+            guard Double(file.length) / inFmt.sampleRate < 15 * 60 else { throw AlignError("This song is too long to analyse (over 15 minutes)") }
+        }
         guard let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(rate), channels: 2, interleaved: false),
               let conv = AVAudioConverter(from: inFmt, to: outFmt) else { throw AlignError("This file's audio can't be read") }
         let inCap: AVAudioFrameCount = 32768
         let outCap = AVAudioFrameCount(Double(inCap) * Double(rate) / inFmt.sampleRate) + 2048
         guard let inBuf = AVAudioPCMBuffer(pcmFormat: inFmt, frameCapacity: inCap),
               let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: outCap) else { throw AlignError("Not enough memory to read the song") }
-        let expected = Int(Double(file.length) / inFmt.sampleRate * Double(rate)) + rate
+        let expected = Int(Double(remaining) / inFmt.sampleRate * Double(rate)) + rate
         var left: [Float] = [], right: [Float] = []
         left.reserveCapacity(expected); right.reserveCapacity(expected)
         var ended = false
@@ -39,8 +49,11 @@ enum PCM22k {
             let status = conv.convert(to: outBuf, error: &err) { _, inStatus in
                 if ended { inStatus.pointee = .endOfStream; return nil }
                 inBuf.frameLength = 0
-                do { try file.read(into: inBuf, frameCount: inCap) } catch { ended = true; inStatus.pointee = .endOfStream; return nil }
+                let want = AVAudioFrameCount(min(AVAudioFramePosition(inCap), remaining))
+                if want == 0 { ended = true; inStatus.pointee = .endOfStream; return nil }
+                do { try file.read(into: inBuf, frameCount: want) } catch { ended = true; inStatus.pointee = .endOfStream; return nil }
                 if inBuf.frameLength == 0 { ended = true; inStatus.pointee = .endOfStream; return nil }
+                remaining -= AVAudioFramePosition(inBuf.frameLength)
                 inStatus.pointee = .haveData
                 return inBuf
             }

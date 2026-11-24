@@ -73,6 +73,7 @@ final class LyricsStore: ObservableObject {
     @Published var translated: [Int: String] = [:]
     @Published var translating = false
     private(set) var loadedID = ""
+    private(set) var sourceLRC = ""            // the lyrics file as it was found, before any word timing was added
 
     private struct Cached: Codable { var synced: String; var plain: String }
     private var offsets: [String: Double] = [:]
@@ -115,7 +116,7 @@ final class LyricsStore: ObservableObject {
     private func loadSource(_ s: Song) async {
         loadedID = s.id
         wordSynced = false
-        lines = []; plain = ""; synced = false; translated = [:]
+        lines = []; plain = ""; synced = false; translated = [:]; sourceLRC = ""
         offset = offsets[s.id] ?? 0
         markedNone = noneIDs.contains(s.id)
         let own = dir.appendingPathComponent("\(s.id).lrc")
@@ -124,10 +125,10 @@ final class LyricsStore: ObservableObject {
         loading = true
         defer { if loadedID == s.id { loading = false } }
         // 0. a file you imported
-        if let t = try? String(contentsOf: own, encoding: .utf8), let parsed = Self.parse(t), !parsed.isEmpty { lines = parsed; synced = true; return }
+        if let t = try? String(contentsOf: own, encoding: .utf8), let parsed = Self.parse(t), !parsed.isEmpty { lines = parsed; synced = true; sourceLRC = t; return }
         // 1. an .lrc beside the song
         let lrc = s.url.deletingPathExtension().appendingPathExtension("lrc")
-        if let t = try? String(contentsOf: lrc, encoding: .utf8), let parsed = Self.parse(t), !parsed.isEmpty { lines = parsed; synced = true; return }
+        if let t = try? String(contentsOf: lrc, encoding: .utf8), let parsed = Self.parse(t), !parsed.isEmpty { lines = parsed; synced = true; sourceLRC = t; return }
         // 2. what was found before
         let cacheURL = dir.appendingPathComponent("\(s.id).json")
         if let d = try? Data(contentsOf: cacheURL), let c = try? JSONDecoder().decode(Cached.self, from: d) { apply(c); return }
@@ -138,7 +139,7 @@ final class LyricsStore: ObservableObject {
     }
 
     private func apply(_ c: Cached) {
-        if let p = Self.parse(c.synced), !p.isEmpty { lines = p; synced = true }
+        if let p = Self.parse(c.synced), !p.isEmpty { lines = p; synced = true; sourceLRC = c.synced }
         plain = c.plain
     }
 

@@ -40,10 +40,11 @@ struct FullPlayerView: View {
                     .buttonStyle(.plain).help("Close the player (Esc)")
                     .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hoverClose = h } }
                     Spacer()
+                    if page == 0 { LyricsMenuButton().transition(.opacity) }
                 }
                 // full screen has no title bar, so the button sits as far from the top as from the side; in a window it stays below the
                 // title-bar strip (that strip drags the window and swallows clicks)
-                .padding(.leading, 20).padding(.trailing, 22).padding(.top, isFull ? 20 : 44)
+                .padding(.horizontal, 20).padding(.top, isFull ? 20 : 44)
                 Spacer()
                 TabPill(page: $page)
             }
@@ -199,13 +200,8 @@ struct ExtraControls: View {
 struct LyricsPage: View {
     @EnvironmentObject var player: Player
     @ObservedObject var store = LyricsStore.shared
-    @Environment(\.openWindow) private var openWindow
-    @AppStorage("lyricsWords") private var wordMode = true
-    @AppStorage("censorLyrics") private var censor = false
-    @AppStorage("lyricsRomanize") private var romanize = false
     @AppStorage("lyricsTranslate") private var translate = false
     @ObservedObject private var sync = WordSync.shared
-    @State private var sharing = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -220,7 +216,6 @@ struct LyricsPage: View {
                     if store.offset != 0 { Text(String(format: "%+.2f s", store.offset)).font(.system(size: 11, design: .rounded)).foregroundStyle(.white.opacity(0.6)) }
                     if store.translating { ProgressView().controlSize(.small) }
                     if sync.busyID == s.id { HStack(spacing: 6) { ProgressView(value: sync.progress).frame(width: 54); Text("Syncing words").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)) } }
-                    menu(s)
                 }
                 .padding(.horizontal, 60).padding(.bottom, 10)
             }
@@ -257,37 +252,6 @@ struct LyricsPage: View {
         }
         .task(id: player.current?.id) { if let s = player.current { await store.ensure(s) } }
         .lyricsTranslation(store: store, on: translate)
-        .sheet(isPresented: $sharing) {
-            if let s = player.current { LyricShareSheet(song: s, lines: store.lines, plain: store.plain) }
-        }
-    }
-
-    private func menu(_ s: Song) -> some View {
-        Menu {
-            Button("Show lyrics earlier  (−0.25 s)") { store.nudge(-0.25, song: s) }
-            Button("Show lyrics later  (+0.25 s)") { store.nudge(0.25, song: s) }
-            Button("Reset sync") { store.setOffset(0, song: s) }.disabled(store.offset == 0)
-            Divider()
-            Toggle("Word by word", isOn: $wordMode)
-            Toggle("Hide bad words", isOn: $censor)
-            Toggle("Show in Latin letters", isOn: $romanize)
-            if #available(macOS 15.0, *) { Toggle("Translate", isOn: $translate) }
-            Divider()
-            do {
-                Button(store.wordSynced ? "Sync words again" : "Sync words precisely") { sync.run(s) }.disabled(sync.busyID != nil || !store.synced)
-                if store.wordSynced { Button("Go back to the original timing") { Task { await store.clearAligned(s) } } }
-            }
-            Divider()
-            Button("Import a lyrics file…") { Task { await store.importFile(for: s) } }
-            if store.hasOwnFile { Button("Remove my lyrics file") { Task { await store.removeOwnFile(for: s) } } }
-            Button(store.markedNone ? "This song has lyrics after all" : "This song has no lyrics") { Task { await store.toggleNone(s) } }
-            Divider()
-            Button("Share lyrics…") { sharing = true }.disabled(store.lines.isEmpty)
-            Button("Desktop lyrics") { openWindow(id: "desktoplyrics") }
-        } label: {
-            Image(systemName: "ellipsis.circle").font(.system(size: 18)).foregroundStyle(.white.opacity(0.7))
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 30)
     }
 }
 
@@ -426,6 +390,56 @@ struct ArtistPage: View {
                 .frame(maxWidth: .infinity)
             }
             .task(id: name) { await bio.load(name) }
+        }
+    }
+}
+
+/// the "…" button at the top right of the lyrics page: the same glass circle as the close button, on the other side
+struct LyricsMenuButton: View {
+    @EnvironmentObject var player: Player
+    @ObservedObject private var store = LyricsStore.shared
+    @ObservedObject private var sync = WordSync.shared
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage("lyricsWords") private var wordMode = true
+    @AppStorage("censorLyrics") private var censor = false
+    @AppStorage("lyricsRomanize") private var romanize = false
+    @AppStorage("lyricsTranslate") private var translate = false
+    @State private var sharing = false
+    @State private var exporting = false
+    @State private var hover = false
+
+    var body: some View {
+        if let s = player.current {
+            Menu {
+                Button("Show lyrics earlier  (−0.25 s)") { store.nudge(-0.25, song: s) }
+                Button("Show lyrics later  (+0.25 s)") { store.nudge(0.25, song: s) }
+                Button("Reset sync") { store.setOffset(0, song: s) }.disabled(store.offset == 0)
+                Divider()
+                Toggle("Word by word", isOn: $wordMode)
+                Toggle("Hide bad words", isOn: $censor)
+                Toggle("Show in Latin letters", isOn: $romanize)
+                if #available(macOS 15.0, *) { Toggle("Translate", isOn: $translate) }
+                Divider()
+                Button(store.wordSynced ? "Sync words again" : "Sync words precisely") { sync.run(s) }.disabled(sync.busyID != nil || !store.synced)
+                if store.wordSynced { Button("Go back to the original timing") { Task { await store.clearAligned(s) } } }
+                Button("Export a piece of this song…") { exporting = true }
+                Divider()
+                Button("Import a lyrics file…") { Task { await store.importFile(for: s) } }
+                if store.hasOwnFile { Button("Remove my lyrics file") { Task { await store.removeOwnFile(for: s) } } }
+                Button(store.markedNone ? "This song has lyrics after all" : "This song has no lyrics") { Task { await store.toggleNone(s) } }
+                Divider()
+                Button("Share lyrics…") { sharing = true }.disabled(store.lines.isEmpty)
+                Button("Desktop lyrics") { openWindow(id: "desktoplyrics") }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 16, weight: .bold)).frame(width: 46, height: 46)
+                    .glass(23, interactive: true).contentShape(Circle())
+                    .scaleEffect(hover ? 1.08 : 1)
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help("Lyrics options")
+            .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+            .sheet(isPresented: $sharing) { LyricShareSheet(song: s, lines: store.lines, plain: store.plain) }
+            .sheet(isPresented: $exporting) { ExportClipSheet(song: s).environmentObject(player) }
         }
     }
 }
