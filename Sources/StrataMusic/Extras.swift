@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVKit
 
 /// Up Next: the queue as a list you can jump around in
 struct QueueView: View {
@@ -84,4 +85,25 @@ struct WindowAccessor: NSViewRepresentable {
     var configure: (NSWindow) -> Void
     func makeNSView(context: Context) -> NSView { NSView() }
     func updateNSView(_ v: NSView, context: Context) { DispatchQueue.main.async { if let w = v.window { configure(w) } } }
+}
+
+/// the AirPlay / output picker
+struct RoutePicker: NSViewRepresentable {
+    func makeNSView(context: Context) -> AVRoutePickerView {
+        let v = AVRoutePickerView(); v.isRoutePickerButtonBordered = false; return v
+    }
+    func updateNSView(_ v: AVRoutePickerView, context: Context) {}
+}
+
+/// playback speed
+struct SpeedButton: View {
+    @EnvironmentObject var player: Player
+    var body: some View {
+        Menu {
+            ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { r in
+                Button { player.speed = Float(r) } label: { Text(r == 1 ? "Normal speed" : "\(r.formatted())×") }
+            }
+        } label: { Image(systemName: "speedometer") }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Speed: \(player.speed.formatted())×")
+    }
 }

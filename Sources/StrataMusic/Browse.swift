@@ -39,6 +39,7 @@ struct SongTable: View {
             }
             TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary) }
             TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary) }
+            TableColumn("Plays") { s in Text((s.plays ?? 0) > 0 ? "\(s.plays!)" : "").monospacedDigit().foregroundStyle(.secondary) }.width(44)
             TableColumn("Time", value: \.duration) { s in Text(fmtTime(s.duration)).monospacedDigit().foregroundStyle(.secondary) }.width(56)
         }
         .contextMenu(forSelectionType: String.self) { ids in

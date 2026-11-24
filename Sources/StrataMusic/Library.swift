@@ -15,6 +15,9 @@ struct Song: Identifiable, Codable, Hashable {
     var cover: String          // file name inside the covers folder ("" = none)
     var added: Double
     var yt: String? = nil      // the YouTube id, for songs downloaded in the app
+    var plays: Int? = nil
+    var skips: Int? = nil
+    var lastPlayed: Double? = nil
 
     var url: URL { URL(fileURLWithPath: path) }
     var ext: String { url.pathExtension.lowercased() }
@@ -56,8 +59,28 @@ enum Disk {
         return d
     }()
 
-    static let playable: Set<String> = ["mp3", "m4a", "aac", "flac", "wav", "aif", "aiff", "alac", "caf", "mp4"]
-    static let notYet: Set<String> = ["opus", "ogg", "webm", "oga"]
+    static let playable: Set<String> = ["mp3", "m4a", "aac", "flac", "wav", "aif", "aiff", "alac", "caf", "mp4", "opus", "ogg", "oga"]
+    static let notYet: Set<String> = ["webm"]
+
+    /// where an Opus song is kept after it has been decoded for playback
+    static func decodedURL(_ s: Song) -> URL {
+        let d = dir.appendingPathComponent("decoded", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d.appendingPathComponent("\(s.id).caf")
+    }
+
+    private static func readOpus(_ url: URL) -> Song? {
+        guard let i = OggOpus.parse(url), i.duration > 0.5 else { return nil }
+        var cover = ""
+        if let data = i.cover, data.count > 200 {
+            let name = fnv(data.prefix(8192)) + "-\(data.count).img"
+            let dest = dir.appendingPathComponent("covers/\(name)")
+            if !FileManager.default.fileExists(atPath: dest.path) { try? data.write(to: dest) }
+            cover = name
+        }
+        let base = url.deletingPathExtension().lastPathComponent
+        return Song(id: fnv(Data(url.path.utf8)), path: url.path, title: i.title.isEmpty ? base : i.title, artist: i.artist, album: i.album, albumArtist: i.albumArtist, track: i.track, year: i.year, duration: i.duration, cover: cover, added: Date().timeIntervalSince1970)
+    }
 
     /// every audio file under [url] (or [url] itself); the second number counts files this Mac can't play yet (Opus, Ogg, WebM)
     static func audioFiles(in url: URL) -> (files: [URL], skipped: Int) {
@@ -77,6 +100,7 @@ enum Disk {
     }
 
     static func readSong(_ url: URL) async -> Song? {
+        if OggOpus.isOpus(url) { return await Task.detached { readOpus(url) }.value }
         let asset = AVURLAsset(url: url)
         guard let d = try? await asset.load(.duration) else { return nil }
         let secs = CMTimeGetSeconds(d)
@@ -138,6 +162,7 @@ final class Library: ObservableObject {
     @Published var status: String = ""
 
     private(set) var byID: [String: Song] = [:]
+    static weak var main: Library?
 
     private struct Saved: Codable {
         var songs: [Song]
@@ -147,6 +172,7 @@ final class Library: ObservableObject {
     }
 
     init() {
+        Library.main = self
         if let d = try? Data(contentsOf: Disk.dir.appendingPathComponent("library.json")),
            let s = try? JSONDecoder().decode(Saved.self, from: d) {
             songs = s.songs.filter { FileManager.default.fileExists(atPath: $0.path) }
@@ -203,7 +229,7 @@ final class Library: ObservableObject {
             if !batch.isEmpty { songs.append(contentsOf: batch); rebuild() }
             save()
             var msg = fresh.isEmpty ? "Nothing new" : "Added \(fresh.count) songs"
-            if skipped > 0 { msg += " · \(skipped) Opus/Ogg/WebM files can't be played on the Mac yet" }
+            if skipped > 0 { msg += " · \(skipped) WebM files can't be played on the Mac yet" }
             status = msg
             if thenPlay, let first = files.first, let s = songs.first(where: { $0.path == first.path }) { Player.shared.play(s, in: [s]) }
             try? await Task.sleep(nanoseconds: 6_000_000_000)
@@ -234,6 +260,26 @@ final class Library: ObservableObject {
         s.yt = t.id
         songs.append(s); rebuild(); save()
         return s
+    }
+
+    /// a short message at the top of the window
+    func flash(_ msg: String) {
+        status = msg
+        Task { try? await Task.sleep(nanoseconds: 6_000_000_000); if status == msg { status = "" } }
+    }
+
+    // MARK: listening history
+
+    func recordPlay(_ id: String?) {
+        guard let id = id, let i = songs.firstIndex(where: { $0.id == id }) else { return }
+        songs[i].plays = (songs[i].plays ?? 0) + 1; songs[i].lastPlayed = Date().timeIntervalSince1970
+        byID[id] = songs[i]
+        save()
+    }
+    func recordSkip(_ id: String) {
+        guard let i = songs.firstIndex(where: { $0.id == id }) else { return }
+        songs[i].skips = (songs[i].skips ?? 0) + 1
+        byID[id] = songs[i]
     }
 
     func rescan() {

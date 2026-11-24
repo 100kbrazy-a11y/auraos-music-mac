@@ -140,6 +140,8 @@ struct ExtraControls: View {
             Button { player.shuffle.toggle() } label: { Image(systemName: "shuffle").foregroundStyle(player.shuffle ? player.accent : Color.white.opacity(0.7)) }
             Button { player.cycleRepeat() } label: { Image(systemName: player.repeatMode == 2 ? "repeat.1" : "repeat").foregroundStyle(player.repeatMode > 0 ? player.accent : Color.white.opacity(0.7)) }
             Spacer()
+            SpeedButton().foregroundStyle(.white.opacity(0.7))
+            RoutePicker().frame(width: 24, height: 24)
             SleepButton().foregroundStyle(.white.opacity(0.7))
             QueueButton().foregroundStyle(.white.opacity(0.7))
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))

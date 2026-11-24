@@ -6,6 +6,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
+            PlaybackSettings().tabItem { Label("Playback", systemImage: "speaker.wave.2") }
             DownloadSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
             DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
@@ -39,11 +40,64 @@ struct GeneralSettings: View {
             Section("Player") {
                 Toggle("Falling leaves (The Thanksgiving Update)", isOn: $leaves)
             }
-            Section("Songs this Mac can't play yet") {
-                Text("Opus, Ogg and WebM files (from Android music packs) are skipped for now. Export them as M4A or FLAC on the phone, or wait for the next update.").font(.callout).foregroundStyle(.secondary)
+            Section("Opus and Ogg files") {
+                Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped).scrollContentBackground(.hidden)
+    }
+}
+
+struct PlaybackSettings: View {
+    @AppStorage("enhancedEngine") private var enhanced = false
+    @AppStorage("crossfade") private var crossfade = 0.0
+    @AppStorage("eqPreset") private var preset = "Flat"
+    @State private var gains: [Double] = (UserDefaults.standard.array(forKey: "eqGains") as? [Double]) ?? Array(repeating: 0, count: 10)
+    private let labels = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Playback engine", selection: $enhanced) {
+                    Text("Standard").tag(false)
+                    Text("Enhanced (new)").tag(true)
+                }
+                .pickerStyle(.segmented)
+                Text(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Section("Enhanced engine") {
+                HStack { Text("Crossfade"); Slider(value: $crossfade, in: 0...12, step: 1); Text(crossfade == 0 ? "Off" : "\(Int(crossfade)) s").monospacedDigit().frame(width: 36, alignment: .trailing) }
+                Picker("Equaliser", selection: $preset) {
+                    ForEach(GaplessEngine.presets, id: \.0) { Text($0.0).tag($0.0) }
+                    Text("Custom").tag("Custom")
+                }
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(0..<10, id: \.self) { i in
+                        VStack(spacing: 4) {
+                            Slider(value: Binding(get: { shown(i) }, set: { v in setGain(i, v) }), in: -12...12).rotationEffect(.degrees(-90)).frame(width: 90, height: 90).frame(width: 22, height: 96)
+                            Text(labels[i]).font(.system(size: 9)).foregroundStyle(.secondary)
+                        }
+                    }
+                }.frame(maxWidth: .infinity).padding(.top, 4)
+            }
+            .disabled(!enhanced)
+        }
+        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .onChange(of: enhanced) { _ in Player.shared.applyAudioSettings() }
+        .onChange(of: crossfade) { _ in Player.shared.applyAudioSettings() }
+        .onChange(of: preset) { _ in Player.shared.applyAudioSettings() }
+    }
+
+    private func shown(_ i: Int) -> Double {
+        if preset == "Custom" { return gains[i] }
+        return Double(GaplessEngine.presets.first { $0.0 == preset }?.1[i] ?? 0)
+    }
+    private func setGain(_ i: Int, _ v: Double) {
+        if preset != "Custom" { gains = GaplessEngine.presets.first { $0.0 == preset }?.1.map { Double($0) } ?? gains; preset = "Custom" }
+        gains[i] = v
+        UserDefaults.standard.set(gains, forKey: "eqGains")
+        Player.shared.applyAudioSettings()
     }
 }
 

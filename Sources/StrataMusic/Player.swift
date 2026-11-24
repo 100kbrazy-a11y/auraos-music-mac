@@ -19,7 +19,10 @@ final class Player: ObservableObject {
     @Published private(set) var accent: Color = Theme.accent
     @Published var shuffle = false { didSet { reshuffle() } }
     @Published var repeatMode = 0                      // 0 off, 1 all, 2 one
-    @Published var volume: Float = 1 { didSet { avp.volume = volume } }
+    @Published var volume: Float = 1 { didSet { setOutVolume(volume) } }
+    /// 0.5x to 2x
+    @Published var speed: Float = 1 { didSet { avp.defaultRate = speed; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
+    @Published private(set) var decoding = false
     /// the sleep timer: stops the music at [sleepEnd], or when the current song ends
     @Published private(set) var sleepEnd: Date?
     @Published private(set) var sleepAtSongEnd = false
@@ -27,6 +30,10 @@ final class Player: ObservableObject {
     private var sleepTask: Task<Void, Never>?
 
     private let avp = AVPlayer()
+    private var ge: GaplessEngine?
+    private var usingGE = false
+    private var counted = false
+    private var lastSaved = 0
     private var baseQueue: [Song] = []
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
@@ -38,12 +45,18 @@ final class Player: ObservableObject {
         timeObserver = avp.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] t in
             let s = t.seconds
             Task { @MainActor in
-                guard let self = self, s.isFinite else { return }
-                self.clock.position = s
-                if Int(s) % 5 == 0 { UserDefaults.standard.set(s, forKey: "lastPosition") }
+                guard let self = self, s.isFinite, !self.usingGE else { return }
+                self.tickPosition(s)
             }
         }
         setupRemote()
+    }
+
+    /// both engines report the play position here
+    private func tickPosition(_ s: Double) {
+        clock.position = s
+        if Int(s) / 5 != lastSaved { lastSaved = Int(s) / 5; UserDefaults.standard.set(s, forKey: "lastPosition") }
+        if !counted, let c = current, s > min(30, max(5, c.duration * 0.5)) { counted = true; Library.main?.recordPlay(c.id) }
     }
 
     /// at launch: the song that was playing last time, paused where it stopped
@@ -75,8 +88,8 @@ final class Player: ObservableObject {
         play(first, in: list)
     }
 
-    func playNext(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.insert(s, at: min(index + 1, queue.count)) } }
-    func enqueue(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.append(s) } }
+    func playNext(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.insert(s, at: min(index + 1, queue.count)); refreshPreload() } }
+    func enqueue(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.append(s); refreshPreload() } }
 
     /// jump to a song that is already in the queue
     func jump(to i: Int) { guard queue.indices.contains(i) else { return }; index = i; load(queue[i], autoplay: true) }
@@ -86,9 +99,10 @@ final class Player: ObservableObject {
         let gone = queue.remove(at: i)
         if i < index { index -= 1 }
         if let b = baseQueue.firstIndex(where: { $0.id == gone.id }) { baseQueue.remove(at: b) }
+        refreshPreload()
     }
 
-    func clearUpNext() { if queue.indices.contains(index) { queue = Array(queue[0...index]) } }
+    func clearUpNext() { if queue.indices.contains(index) { queue = Array(queue[0...index]); refreshPreload() } }
 
     // MARK: sleep timer
 
@@ -106,9 +120,9 @@ final class Player: ObservableObject {
     private func fadeOutAndPause() async {
         sleepEnd = nil
         let start = volume
-        for i in stride(from: 9, through: 0, by: -1) { avp.volume = start * Float(i) / 10; try? await Task.sleep(nanoseconds: 250_000_000) }
+        for i in stride(from: 9, through: 0, by: -1) { setOutVolume(start * Float(i) / 10); try? await Task.sleep(nanoseconds: 250_000_000) }
         if isPlaying { togglePlay() }
-        avp.volume = start
+        setOutVolume(start)
     }
 
     private func reshuffle() {
@@ -119,36 +133,128 @@ final class Player: ObservableObject {
         } else {
             queue = baseQueue; index = queue.firstIndex(where: { $0.id == cur.id }) ?? 0
         }
+        refreshPreload()
     }
 
     // MARK: transport
 
+    private func setOutVolume(_ v: Float) { avp.volume = v; ge?.setVolume(v) }
+    private func engPlay() { if usingGE { ge?.play() } else { avp.play(); if speed != 1 { avp.rate = speed } } }
+    private func engPause() { if usingGE { ge?.pause() } else { avp.pause() } }
+
+    private func geEngine() -> GaplessEngine {
+        if let g = ge { return g }
+        let g = GaplessEngine()
+        g.onTick = { [weak self] s in self?.tickPosition(s) }
+        g.onEnd = { [weak self] in self?.ended() }
+        g.onAdvance = { [weak self] in self?.advanceGapless() }
+        ge = g
+        g.setVolume(volume); g.setRate(speed)
+        applyAudioSettings()
+        return g
+    }
+
+    /// equaliser, crossfade: read from the settings (also called when they change)
+    func applyAudioSettings() {
+        guard let g = ge else { return }
+        let d = UserDefaults.standard
+        let name = d.string(forKey: "eqPreset") ?? "Flat"
+        if name == "Custom", let arr = d.array(forKey: "eqGains") as? [Double], arr.count == 10 { g.setGains(arr.map { Float($0) }) }
+        else { g.setGains(GaplessEngine.presets.first { $0.0 == name }?.1 ?? Array(repeating: 0, count: 10)) }
+        g.crossfade = d.double(forKey: "crossfade")
+        refreshPreload()
+    }
+
+    /// the song that follows the current one, honouring repeat
+    private func nextIndex() -> Int? {
+        guard !queue.isEmpty else { return nil }
+        if repeatMode == 2 { return index }
+        if index + 1 < queue.count { return index + 1 }
+        if repeatMode == 1 { return 0 }
+        return nil
+    }
+
+    private func playableURL(_ s: Song) -> URL? {
+        if OggOpus.isOpus(s.url) { let c = Disk.decodedURL(s); return FileManager.default.fileExists(atPath: c.path) ? c : nil }
+        return s.url
+    }
+
+    /// lets the enhanced engine open the next song ahead of time
+    private func refreshPreload() {
+        guard usingGE, let g = ge else { return }
+        guard let i = nextIndex(), let u = playableURL(queue[i]) else { g.preload(nil); return }
+        let same = current.map { $0.albumKey == queue[i].albumKey && !$0.album.isEmpty } ?? false
+        g.crossfade = same ? 0 : UserDefaults.standard.double(forKey: "crossfade")
+        g.preload(u)
+    }
+
+    /// the enhanced engine already switched to the preloaded song
+    private func advanceGapless() {
+        guard let i = nextIndex() else { return }
+        index = i
+        let s = queue[i]
+        current = s; counted = false
+        UserDefaults.standard.set(s.id, forKey: "lastSong")
+        accent = Covers.accent(s)
+        clock.position = 0
+        pushNowPlaying(); pushDiscord()
+        refreshPreload()
+    }
+
     private func load(_ s: Song, autoplay: Bool) {
-        if let o = endObserver { NotificationCenter.default.removeObserver(o) }
-        let item = AVPlayerItem(url: s.url)
+        if let o = endObserver { NotificationCenter.default.removeObserver(o); endObserver = nil }
+        current = s; counted = false
+        UserDefaults.standard.set(s.id, forKey: "lastSong")
+        accent = Covers.accent(s)
+        clock.position = 0
+        isPlaying = autoplay
+        pushNowPlaying(); pushDiscord()
+        Task { await start(s, autoplay: autoplay) }
+    }
+
+    /// opens the file (Opus files are decoded once first) on whichever engine is chosen
+    private func start(_ s: Song, autoplay: Bool) async {
+        var url = s.url
+        if OggOpus.isOpus(url) {
+            let cached = Disk.decodedURL(s)
+            if !FileManager.default.fileExists(atPath: cached.path) {
+                decoding = true
+                let src = s.url
+                let err: String? = await Task.detached { () -> String? in
+                    do { try OggOpus.decode(src, to: cached); return nil } catch { try? FileManager.default.removeItem(at: cached); return error.localizedDescription }
+                }.value
+                decoding = false
+                guard current?.id == s.id else { return }
+                if let e = err { isPlaying = false; Library.main?.flash("Couldn't play \(s.title): \(e)"); return }
+            }
+            url = cached
+        }
+        guard current?.id == s.id else { return }
+        if UserDefaults.standard.bool(forKey: "enhancedEngine") {
+            let g = geEngine()
+            avp.pause(); avp.replaceCurrentItem(with: nil)
+            if (try? g.load(url, autoplay: autoplay)) != nil { usingGE = true; refreshPreload(); return }
+        }
+        usingGE = false; ge?.stopAll()
+        let item = AVPlayerItem(url: url)
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.ended() }
         }
         avp.replaceCurrentItem(with: item)
-        current = s
-        UserDefaults.standard.set(s.id, forKey: "lastSong")
-        accent = Covers.accent(s)
-        clock.position = 0
-        if autoplay { avp.play(); isPlaying = true } else { isPlaying = false }
-        pushNowPlaying(); pushDiscord()
+        if autoplay { avp.play(); if speed != 1 { avp.rate = speed } }
     }
 
     private func ended() {
-        if sleepAtSongEnd { sleepAtSongEnd = false; avp.pause(); isPlaying = false; seek(to: 0); pushNowPlaying(); pushDiscord(); return }
-        if repeatMode == 2 { seek(to: 0); avp.play(); isPlaying = true; return }
-        if index + 1 < queue.count { index += 1; load(queue[index], autoplay: true) }
-        else if repeatMode == 1, !queue.isEmpty { index = 0; load(queue[0], autoplay: true) }
-        else { avp.pause(); isPlaying = false; seek(to: 0); pushNowPlaying(); pushDiscord() }
+        if sleepAtSongEnd { sleepAtSongEnd = false; engPause(); isPlaying = false; seek(to: 0); pushNowPlaying(); pushDiscord(); return }
+        if let i = nextIndex() {
+            if i == index { seek(to: 0); counted = false; engPlay(); isPlaying = true; if usingGE { /* restart the preloaded copy too */ refreshPreload() }; return }
+            index = i; load(queue[i], autoplay: true)
+        } else { engPause(); isPlaying = false; seek(to: 0); pushNowPlaying(); pushDiscord() }
     }
 
     func togglePlay() {
         guard current != nil else { return }
-        if isPlaying { avp.pause() } else { avp.play() }
+        if isPlaying { engPause() } else { engPlay() }
         isPlaying.toggle()
         pushNowPlaying(); pushDiscord()
     }
@@ -156,6 +262,7 @@ final class Player: ObservableObject {
     func next() {
         guard !queue.isEmpty else { return }
         if index + 1 < queue.count { index += 1 } else if repeatMode == 1 || shuffle { index = 0 } else { return }
+        if !counted, clock.position < 10, let c = current { Library.main?.recordSkip(c.id) }
         load(queue[index], autoplay: true)
     }
 
@@ -168,12 +275,12 @@ final class Player: ObservableObject {
 
     func seek(to seconds: Double) {
         let t = max(0, min(seconds, max(duration - 0.1, 0)))
-        avp.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        if usingGE { ge?.seek(t) } else { avp.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
         clock.position = t
         pushNowPlaying(); pushDiscord()
     }
 
-    func cycleRepeat() { repeatMode = (repeatMode + 1) % 3 }
+    func cycleRepeat() { repeatMode = (repeatMode + 1) % 3; refreshPreload() }
 
     // MARK: system integration (media keys, the menu bar, Control Centre)
 
@@ -198,7 +305,7 @@ final class Player: ObservableObject {
             MPMediaItemPropertyAlbumTitle: s.album,
             MPMediaItemPropertyPlaybackDuration: s.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: clock.position,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(speed) : 0.0,
         ]
         if let img = Covers.image(s, maxPixel: 600) { info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: img.size) { _ in img } }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

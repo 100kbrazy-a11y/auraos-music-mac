@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.3.0",
+   "name": "The Macster Update",
+   "date": "2026-11-23",
+   "notes": [
+    "Opus and Ogg songs (Android music packs, .opus exports) now play and show their tags and covers on the Mac",
+    "A new Enhanced playback engine (Settings > Playback): gapless playback, crossfade, a 10-band equaliser with presets, and playback speed. Standard stays the default",
+    "AirPlay / output picker and a speed menu in the player",
+    "Play counts are tracked (a Plays column in the song list)"
+   ]
+  },
+  {
    "version": "1.2.0",
    "name": "The Macster Update",
    "date": "2026-11-23",
