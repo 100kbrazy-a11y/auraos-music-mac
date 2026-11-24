@@ -16,6 +16,18 @@ final class WordSync: ObservableObject {
         // an earlier version used a large downloaded model; it isn't needed any more
         try? FileManager.default.removeItem(at: Disk.dir.appendingPathComponent("models", isDirectory: true))
         try? FileManager.default.removeItem(at: Disk.dir.appendingPathComponent("align", isDirectory: true))
+        // timings made by an older version of the timing code are made again
+        if UserDefaults.standard.integer(forKey: "alignerGeneration") < 2 {
+            Self.deleteAlignedFiles()
+            UserDefaults.standard.set(2, forKey: "alignerGeneration")
+        }
+    }
+
+    private static func deleteAlignedFiles() {
+        let dir = Disk.dir.appendingPathComponent("lyrics", isDirectory: true)
+        for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where f.hasSuffix(".aligned.lrc") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
+        }
     }
 
     var auto: Bool { UserDefaults.standard.object(forKey: "preciseSync") as? Bool ?? true }
@@ -64,10 +76,7 @@ final class WordSync: ObservableObject {
 
     /// deletes every precise timing and shows the lyrics as they were
     func forgetAll() {
-        let dir = Disk.dir.appendingPathComponent("lyrics", isDirectory: true)
-        for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where f.hasSuffix(".aligned.lrc") {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
-        }
+        Self.deleteAlignedFiles()
         tried = []
         if let s = Player.shared.current { Task { await LyricsStore.shared.load(for: s) } }
     }

@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.8.1",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Word timing now follows the lyrics' own line times: a line never starts before its time or runs into the next line, so words can't get mixed up between lines. The singing only decides where each word falls inside its line.",
+    "First words no longer light up early (a breath, an ad-lib or the end of the line before can't start a line any more).",
+    "A (bracketed ad-lib) line sung over a line no longer cuts that line short in the timing.",
+    "Songs timed with 2.8.0 are re-timed the next time they play."
+   ]
+  },
+  {
    "version": "2.8.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

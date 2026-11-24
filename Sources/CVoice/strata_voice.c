@@ -187,7 +187,7 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
     for (int i = 0; i < n_words; i++) Ns0 += syll[i] < 1 ? 1 : syll[i];
     // the stamp is a good guide to where the line starts, and a line has only so many syllables to sing: don't let a held instrument stretch it
     double ts = time_of(v, s) - 0.5 * v->frame_s, te = time_of(v, e) + 0.5 * v->frame_s;
-    if (ts < base - 0.4) { ts = base - 0.4; s = frame_of(v, ts); }
+    if (ts < base - 0.2) { ts = base - 0.2; s = frame_of(v, ts); }   // a breath, an ad-lib or the end of the line before doesn't start this one
     double longest = 0.9 * Ns0 + 0.8;
     if (te - ts > longest) { te = ts + longest; e = frame_of(v, te); }
     if (e - s < 6) return 0;

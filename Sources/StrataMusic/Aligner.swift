@@ -5,6 +5,7 @@ import CVoice
 // Precise word timing, made at home and light on purpose: no model to download.
 // 1. the song is read as stereo audio; Sources/CVoice keeps the part that is sung (centred, steady, not a drum hit) and finds where the voice is and where its syllables begin
 // 2. each lyric line is lined up with that: its words are matched to the syllable starts in the stretch where it is sung
+// The lyrics' own line times are the authority: a line never starts before its stamp or runs past the next line's, so words can't be mixed up between lines. The audio only decides where the words fall inside the line's own slot.
 // The words' times are written as an enhanced .lrc (a time before each word), which other Strata versions can read.
 
 struct AlignError: LocalizedError {
@@ -80,17 +81,26 @@ enum Aligner {
         return String(format: "%02d:%05.2f", m, t - Double(m) * 60)
     }
 
-    /// the stretch of the song a line is sung in (audio time): from just before its stamp to just after the next line starts
+    static func isAdlib(_ s: String) -> Bool { let t = s.trimmingCharacters(in: .whitespaces); return t.count > 2 && t.hasPrefix("(") && t.hasSuffix(")") }
+
+    /// the slot a line has in the lyrics (audio time): from its stamp to the next line's. A "(ad-lib)" line sung over the top doesn't end the line before it.
+    static func slot(_ lines: [LyricLine], _ i: Int, offset: Double) -> (start: Double, end: Double) {
+        let line = lines[i]
+        let base = line.time + offset
+        var k = i + 1
+        if !isAdlib(line.text) { while k < lines.count, isAdlib(lines[k].text) { k += 1 } }
+        let end = k < lines.count ? lines[k].time + offset : base + min(8, 1.5 + Double(line.text.count) * 0.12)
+        return (base, max(end, base + 0.4))
+    }
+
+    /// the stretch of the song searched for a line's singing: its own slot (a hair early, in case the stamp is a touch late)
     static func window(_ lines: [LyricLine], _ i: Int, offset: Double, seconds: Double) -> (Double, Double)? {
         let line = lines[i]
         guard !line.text.isEmpty, !line.words.isEmpty else { return nil }
-        let base = line.time + offset
-        let next = i + 1 < lines.count ? lines[i + 1].time + offset : base + 10
-        var we = max(next + 0.2, base + 1.5)
-        we = min(we, base + 4 + Double(line.text.count) * 0.25)
-        we = min(we, seconds)
-        let ws = max(0, base - 0.6)
-        return we > ws ? (ws, we) : nil
+        let slot = slot(lines, i, offset: offset)
+        let ws = max(0, slot.start - 0.15)
+        let we = min(slot.end, seconds)
+        return we - ws > 0.4 ? (ws, we) : nil
     }
 
     /// the pieces of a line that get their own time: its words (or, for a line written without spaces in Latin letters, the line as a whole)
@@ -125,12 +135,17 @@ enum Aligner {
                 let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &s, &end)
                 if q > 0 { starts = s }
             }
-            if let s = starts {
+            if var s = starts {
+                // inside the line's own slot, and never before the one before it
+                let slot = slot(lines, i, offset: offset)
+                let lastOK = max(slot.start, slot.end - 0.12)
+                let first = max(slot.start, prevStamp)
+                var prev = first
+                for k in 0..<s.count { s[k] = min(max(s[k] + 0.03, prev), lastOK); prev = s[k] }
                 done += 1
-                let st = max(prevStamp, min(base, s[0]))
-                prevStamp = st
-                out += "[\(stamp(st))]"
-                for (k, p) in parts.enumerated() { out += "<\(stamp(max(s[k], st)))>\(p)" }
+                prevStamp = first
+                out += "[\(stamp(first))]"
+                for (k, p) in parts.enumerated() { out += "<\(stamp(s[k]))>\(p)" }
             } else {
                 let st = max(prevStamp, base)
                 prevStamp = st
