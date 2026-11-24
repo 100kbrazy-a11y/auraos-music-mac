@@ -342,7 +342,9 @@ extension Library {
                 let f = group[0]
                 status = "Looking for covers… \(i + 1) of \(missing.count)"
                 let term = f.album.isEmpty ? "\(f.title) \(f.artist)" : "\(f.album) \(f.artistKey)"
-                if let u = await ITunes.album(term) ?? (f.album.isEmpty ? nil : await ITunes.songs(term).first?.art), let d = await ITunes.image(u) {
+                var found = await ITunes.album(term)
+                if found == nil && !f.album.isEmpty { found = await ITunes.songs(term).first?.art }
+                if let u = found, let d = await ITunes.image(u) {
                     let name = Disk.saveCover(d)
                     for s in group { if let j = songs.firstIndex(where: { $0.id == s.id }) { songs[j].cover = name } }
                     done += 1
