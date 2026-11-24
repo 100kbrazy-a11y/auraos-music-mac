@@ -5,11 +5,14 @@ import AVKit
 /// Up Next: the queue as a list you can jump around in
 struct QueueView: View {
     @EnvironmentObject var player: Player
+    @ObservedObject var radio = Radio.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Up Next").font(.system(size: 15, weight: .bold))
+                if radio.active { Label(radio.loading ? "Radio…" : "Radio", systemImage: "dot.radiowaves.left.and.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(player.accent) }
                 Spacer()
+                if radio.active { Button("Stop Radio") { radio.stop() }.buttonStyle(.plain).foregroundStyle(.secondary) }
                 if player.queue.count > player.index + 1 { Button("Clear") { player.clearUpNext() }.buttonStyle(.plain).foregroundStyle(.secondary) }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
@@ -25,7 +28,10 @@ struct QueueView: View {
                                     CoverView(song: s, size: 34, radius: 6)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(s.title).font(.system(size: 12.5, weight: i == player.index ? .bold : .regular)).lineLimit(1).foregroundStyle(i == player.index ? player.accent : Color.primary)
-                                        Text(s.shownArtist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                                        HStack(spacing: 4) {
+                                            if radio.ids.contains(s.id) && i > player.index { Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 9)).foregroundStyle(player.accent) }
+                                            Text(s.shownArtist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                                        }
                                     }
                                     Spacer()
                                     if i == player.index { Image(systemName: "speaker.wave.2.fill").font(.system(size: 11)).foregroundStyle(player.accent) }

@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 enum Nav: Hashable {
+    case home, replay
     case songs, recent, albums, artists, favorites, duplicates
     case smart(String)
     case youtube, downloads, settings
@@ -14,7 +15,7 @@ struct RootView: View {
     @EnvironmentObject var updater: Updater
     @ObservedObject var dl = Downloads.shared
     @AppStorage("leaves") private var leaves = true
-    @State private var nav: Nav? = .songs
+    @State private var nav: Nav? = .home
     @State private var path = NavigationPath()
     @State private var showPlayer = false
     @State private var search = ""
@@ -22,6 +23,8 @@ struct RootView: View {
     @FocusState private var searchFocus: Bool
     @State private var windowFrame = CGRect(x: 0, y: 0, width: 1200, height: 800)
     @State private var escMonitor: Any?
+    @State private var searchMonitor: Any?
+    @StateObject private var searchNav = SearchNav()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var grab = ArtistGrab.shared
 
@@ -62,7 +65,7 @@ struct RootView: View {
                 Color.black.opacity(0.5).ignoresSafeArea()
                     .onTapGesture { searchFocus = false }
                     .transition(.opacity).zIndex(1)
-                HStack { Spacer(); SearchDropdown(query: search, openSong: openSong, openAlbum: openAlbum, openArtist: openArtist, web: searchWeb).padding(.top, 6).padding(.trailing, 14) }
+                HStack { Spacer(); SearchDropdown(query: search, nav: searchNav, openSong: openSong, openAlbum: openAlbum, openArtist: openArtist, web: searchWeb, finish: finishSearch).padding(.top, 6).padding(.trailing, 14) }
                     .frame(maxHeight: .infinity, alignment: .top)
                     .transition(.move(edge: .top).combined(with: .opacity)).zIndex(2)
             }
@@ -114,6 +117,26 @@ struct RootView: View {
                 Task { await YouTube.shared.run() }
             }
             if showPlayer { closePlayer() }
+        }
+        .onChange(of: search) { _ in searchNav.sel = -1 }
+        .onChange(of: searchFocus) { on in
+            if on {
+                // arrow keys walk the list, Return opens the highlighted row, or the full YouTube results page
+                searchMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { ev in
+                    switch ev.keyCode {
+                    case 125: searchNav.move(1); return nil
+                    case 126: searchNav.move(-1); return nil
+                    case 36, 76:
+                        if searchNav.activate() { return nil }
+                        if !search.trimmingCharacters(in: .whitespaces).isEmpty { searchWeb(); return nil }
+                        return ev
+                    default: return ev
+                    }
+                }
+            } else {
+                if let m = searchMonitor { NSEvent.removeMonitor(m); searchMonitor = nil }
+                searchNav.sel = -1
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in if !showPlayer { searchFocus = true } }
@@ -171,19 +194,47 @@ struct SearchField: View {
 
 struct SearchDropdown: View {
     let query: String
+    @ObservedObject var nav: SearchNav
     var openSong: (Song, [Song]) -> Void
     var openAlbum: (String) -> Void
     var openArtist: (String) -> Void
     var web: () -> Void
+    var finish: () -> Void
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
+    @AppStorage("liveYt") private var liveYt = true
+    @State private var yt: [YtResult] = []
+    @State private var ytBusy = false
 
     private var q: String { query.trimmingCharacters(in: .whitespaces) }
 
+    private struct Found {
+        var songs: [Song] = []; var albums: [AlbumInfo] = []; var artists: [ArtistInfo] = []
+        var shownSongs: [Song] = []; var shownAlbums: [AlbumInfo] = []; var shownArtists: [ArtistInfo] = []; var shownYt: [YtResult] = []
+        var actions: [() -> Void] = []
+    }
+
+    private func found() -> Found {
+        var f = Found()
+        if !q.isEmpty {
+            f.songs = lib.songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
+            f.albums = lib.albums.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) }
+            f.artists = lib.artists.filter { $0.id.localizedCaseInsensitiveContains(q) }
+        }
+        f.shownSongs = Array(f.songs.prefix(6)); f.shownAlbums = Array(f.albums.prefix(3)); f.shownArtists = Array(f.artists.prefix(3)); f.shownYt = Array(yt.prefix(5))
+        let all = f.songs
+        for s in f.shownSongs { f.actions.append { openSong(s, all) } }
+        for a in f.shownAlbums { f.actions.append { openAlbum(a.id) } }
+        for a in f.shownArtists { f.actions.append { openArtist(a.id) } }
+        for r in f.shownYt { f.actions.append { grab(r) } }
+        return f
+    }
+
     var body: some View {
-        let songs = q.isEmpty ? [] : lib.songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
-        let albums = q.isEmpty ? [] : lib.albums.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) }
-        let artists = q.isEmpty ? [] : lib.artists.filter { $0.id.localizedCaseInsensitiveContains(q) }
+        let f = found()
+        let _ = setActions(f.actions)
+        let o1 = f.shownSongs.count, o2 = o1 + f.shownAlbums.count, o3 = o2 + f.shownArtists.count
+
         VStack(alignment: .leading, spacing: 0) {
             if !q.isEmpty {
                 Button(action: web) {
@@ -194,48 +245,88 @@ struct SearchDropdown: View {
                             Text("Look for “\(q)” on YouTube and download it").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
+                        Text("↩").font(.system(size: 11)).foregroundStyle(.tertiary)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 Divider().opacity(0.5)
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    if q.isEmpty {
-                        Text("Search your songs, albums and artists").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
-                    } else if songs.isEmpty && albums.isEmpty && artists.isEmpty {
-                        Text("Nothing in your library matches “\(q)”").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
-                    }
-                    if !songs.isEmpty {
-                        header("Songs")
-                        ForEach(songs.prefix(6)) { s in
-                            row(CoverView(song: s, size: 34, radius: 6), s.title, s.shownArtist + (s.album.isEmpty ? "" : " · " + s.album), s.id == player.current?.id) { openSong(s, songs) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if q.isEmpty {
+                            Text("Search your songs, albums and artists").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
+                        } else if f.songs.isEmpty && f.albums.isEmpty && f.artists.isEmpty && yt.isEmpty && !ytBusy {
+                            Text("Nothing in your library matches “\(q)”").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
+                        }
+                        if !f.shownSongs.isEmpty {
+                            header("Songs")
+                            ForEach(Array(f.shownSongs.enumerated()), id: \.element.id) { i, s in
+                                row(i, CoverView(song: s, size: 34, radius: 6), s.title, s.shownArtist + (s.album.isEmpty ? "" : " · " + s.album), s.id == player.current?.id) { openSong(s, f.songs) }
+                            }
+                        }
+                        if !f.shownAlbums.isEmpty {
+                            header("Albums")
+                            ForEach(Array(f.shownAlbums.enumerated()), id: \.element.id) { i, a in
+                                row(o1 + i, CoverView(song: a.cover, size: 34, radius: 6), a.title, a.artist, false) { openAlbum(a.id) }
+                            }
+                        }
+                        if !f.shownArtists.isEmpty {
+                            header("Artists")
+                            ForEach(Array(f.shownArtists.enumerated()), id: \.element.id) { i, a in
+                                row(o2 + i, CoverView(song: a.cover, size: 34, radius: 17), a.id, "\(a.songs.count) songs", false) { openArtist(a.id) }
+                            }
+                        }
+                        if !f.shownYt.isEmpty || ytBusy {
+                            HStack(spacing: 6) {
+                                header("On YouTube Music")
+                                if ytBusy { ProgressView().controlSize(.mini).padding(.top, 8) }
+                            }
+                            ForEach(Array(f.shownYt.enumerated()), id: \.element.id) { i, r in
+                                row(o3 + i, YtThumb(url: r.thumb, size: 34, radius: 6), r.title, r.artist, false, trailing: "arrow.down.circle") { grab(r) }
+                            }
                         }
                     }
-                    if !albums.isEmpty {
-                        header("Albums")
-                        ForEach(albums.prefix(3)) { a in row(CoverView(song: a.cover, size: 34, radius: 6), a.title, a.artist, false) { openAlbum(a.id) } }
-                    }
-                    if !artists.isEmpty {
-                        header("Artists")
-                        ForEach(artists.prefix(3)) { a in row(CoverView(song: a.cover, size: 34, radius: 17), a.id, "\(a.songs.count) songs", false) { openArtist(a.id) } }
-                    }
+                    .padding(.bottom, 6)
                 }
-                .padding(.bottom, 6)
+                .onChange(of: nav.sel) { s in if s >= 0 { withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(s, anchor: .center) } } }
             }
             .frame(maxHeight: 380)
         }
         .frame(width: 400)
         .glass(18)
         .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+        .task(id: q) { await searchYouTube() }
+    }
+
+    private func setActions(_ a: [() -> Void]) { nav.actions = a }
+
+    private func grab(_ r: YtResult) {
+        Downloads.shared.lib = lib
+        Downloads.shared.add([Track(id: r.id, title: r.title, artist: r.artist, album: r.album, thumb: r.thumb)], play: true)
+        lib.flash("Downloading “\(r.title)”…")
+        finish()
+    }
+
+    /// YouTube results appear under the library's once typing has paused for 0.4 s
+    private func searchYouTube() async {
+        yt = []; ytBusy = false
+        guard liveYt, q.count >= 2 else { return }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        if Task.isCancelled { return }
+        ytBusy = true
+        let r = try? await YtEngine.shared.search(q, type: "song")
+        if Task.isCancelled { return }
+        ytBusy = false
+        yt = (r ?? []).filter { $0.kind == "song" }
     }
 
     private func header(_ t: String) -> some View {
         Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary).textCase(.uppercase).padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 2)
     }
 
-    private func row<C: View>(_ cover: C, _ title: String, _ sub: String, _ playing: Bool, _ action: @escaping () -> Void) -> some View {
+    private func row<C: View>(_ index: Int, _ cover: C, _ title: String, _ sub: String, _ playing: Bool, trailing: String? = nil, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 cover
@@ -244,10 +335,13 @@ struct SearchDropdown: View {
                     Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
+                if let t = trailing { Image(systemName: t).foregroundStyle(.secondary) }
             }
             .padding(.horizontal, 12).padding(.vertical, 4).contentShape(Rectangle())
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(index == nav.sel ? player.accent.opacity(0.28) : Color.clear).padding(.horizontal, 4))
         }
         .buttonStyle(.plain)
+        .id(index)
     }
 }
 
@@ -264,6 +358,10 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $nav) {
+            Section("Discover") {
+                Label("Home", systemImage: "house").tag(Nav.home)
+                Label("Replay", systemImage: "chart.bar.xaxis").tag(Nav.replay)
+            }
             Section("Library") {
                 Label("Songs", systemImage: "music.note").tag(Nav.songs)
                 Label("Recently Added", systemImage: "clock").tag(Nav.recent)
@@ -337,6 +435,8 @@ struct DetailRoot: View {
         NavigationStack(path: $path) {
             Group {
                 switch nav {
+                case .home: HomeView()
+                case .replay: ReplayView()
                 case .songs: SongTable(songs: lib.songs, search: search)
                 case .recent: SongTable(songs: lib.recentSongs, search: search, recent: true)
                 case .albums: AlbumsView(search: search)
@@ -363,6 +463,8 @@ struct DetailRoot: View {
 
     private var title: String {
         switch nav {
+        case .home: return "Home"
+        case .replay: return "Replay"
         case .songs: return "Songs"
         case .recent: return "Recently Added"
         case .albums: return "Albums"

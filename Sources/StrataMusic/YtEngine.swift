@@ -240,6 +240,19 @@ final class YtEngine: NSObject, WKScriptMessageHandler {
         }
     }
 
+    var isWarm: Bool { isReady && web != nil }
+
+    /// songs YouTube Music thinks go with this one (by id, or by searching [q])
+    func radio(id: String?, q: String) async throws -> [Track] {
+        try await use {
+            var o: [String: Any] = ["q": q]
+            if let id = id, !id.isEmpty { o["id"] = id }
+            let arg = (try? JSONSerialization.data(withJSONObject: o)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+            let j = (try await run("radio", arg, timeout: 90)) as? [String: Any] ?? [:]
+            return Self.tracks(j["tracks"])
+        }
+    }
+
     struct ArtistPage { var name: String; var thumb: String; var albums: [YtResult]; var top: [Track] }
     func artist(_ id: String) async throws -> ArtistPage {
         try await use {

@@ -327,6 +327,7 @@ final class Library: ObservableObject {
         guard let id = id, let i = songs.firstIndex(where: { $0.id == id }) else { return }
         songs[i].plays = (songs[i].plays ?? 0) + 1; songs[i].lastPlayed = Date().timeIntervalSince1970
         byID[id] = songs[i]
+        PlayLog.shared.add(songs[i])
         save()
     }
     func recordSkip(_ id: String) {

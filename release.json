@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.5.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "A Home page: jump back in, made-for-you mixes, your artists, albums you haven't played in a while, and new releases from your artists",
+    "Radio: start it from any song, album or artist. Songs you own play right away, the rest download just ahead of time, and Up Next marks them",
+    "Replay: your top songs, artists and minutes for this month, last month, this year or all time, with a picture you can save or copy",
+    "Artist pages with a big photo, a short bio, your top songs, and albums split from singles",
+    "Search shows YouTube Music results under your own songs as you type. Arrow keys move through the list and Return opens it"
+   ]
+  },
+  {
    "version": "1.4.0",
    "name": "The Macster Update",
    "date": "2026-11-23",

@@ -49,6 +49,7 @@ struct SongTable: View {
                 Button("Play") { player.play(first, in: list) }
                 Button("Play Next") { for s in picked.reversed() { player.playNext(s) } }
                 Button("Add to Queue") { for s in picked { player.enqueue(s) } }
+                Button("Start Radio") { Radio.shared.start(from: first) }
                 Divider()
                 Button(lib.isFav(first) ? "Remove from Favorites" : "Add to Favorites") { let was = lib.isFav(first); for s in picked where lib.isFav(s) == was { lib.toggleFav(s) } }
                 Menu("Add to Playlist") {
@@ -201,7 +202,10 @@ struct AlbumDetail: View {
                             Text(a.title).font(.system(size: 28, weight: .bold)).lineLimit(2)
                             NavigationLink(value: ArtistRef(name: a.artist)) { Text(a.artist).font(.system(size: 18)).foregroundStyle(.secondary) }.buttonStyle(.plain)
                             Text([a.year, "\(a.songs.count) songs", fmtTime(a.songs.reduce(0) { $0 + $1.duration })].filter { !$0.isEmpty }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(.secondary)
-                            PlayButtons(songs: a.songs).padding(.top, 6)
+                            HStack(spacing: 10) {
+                                PlayButtons(songs: a.songs)
+                                Button { Radio.shared.start(album: a) } label: { Label("Radio", systemImage: "dot.radiowaves.left.and.right") }.buttonStyle(.bordered).controlSize(.large)
+                            }.padding(.top, 6)
                         }
                         Spacer()
                     }
@@ -242,26 +246,76 @@ struct ArtistsView: View {
 struct ArtistDetail: View {
     let name: String
     @EnvironmentObject var lib: Library
+    @EnvironmentObject var player: Player
+    @ObservedObject var profiles = ArtistProfiles.shared
+    @State private var moreBio = false
+
     var body: some View {
         if let a = lib.artists.first(where: { $0.id == name }) {
+            let profile = profiles.cache[name]
+            let top = a.songs.filter { ($0.plays ?? 0) > 0 }.sorted { ($0.plays ?? 0) > ($1.plays ?? 0) }.prefix(5)
+            let albums = a.albums.filter { $0.songs.count > 2 }
+            let singles = a.albums.filter { $0.songs.count <= 2 }
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack(spacing: 22) {
-                        CoverView(song: a.cover, size: 150, radius: 75).shadow(color: .black.opacity(0.4), radius: 14, y: 8)
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(a.id).font(.system(size: 32, weight: .bold))
-                            PlayButtons(songs: a.songs)
-                            Button { NotificationCenter.default.post(name: .ytSearch, object: [a.id, "artist"]) } label: { Label("Get more from YouTube Music", systemImage: "arrow.down.circle") }.buttonStyle(.bordered)
-                        }
-                        Spacer()
+                VStack(alignment: .leading, spacing: 24) {
+                    header(a, profile)
+                    if let bio = profile?.bio, !bio.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(bio).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(moreBio ? nil : 3)
+                            HStack(spacing: 12) {
+                                Button(moreBio ? "Less" : "More") { withAnimation { moreBio.toggle() } }.buttonStyle(.plain).foregroundStyle(player.accent)
+                                Text("From Wikipedia").font(.system(size: 11)).foregroundStyle(.tertiary)
+                            }
+                        }.frame(maxWidth: 720, alignment: .leading)
                     }
-                    if !a.albums.isEmpty { Text("Albums").font(.title3.weight(.bold)); AlbumGrid(albums: a.albums, size: 150) }
-                    Text("Songs").font(.title3.weight(.bold))
+                    if !top.isEmpty {
+                        Text("Your top songs").font(.title3.weight(.bold))
+                        SongRows(songs: Array(top), showCover: true)
+                    }
+                    if !albums.isEmpty { Text("Albums").font(.title3.weight(.bold)); AlbumGrid(albums: albums, size: 150) }
+                    if !singles.isEmpty { Text("Singles & EPs").font(.title3.weight(.bold)); AlbumGrid(albums: singles, size: 150) }
+                    Text("All songs").font(.title3.weight(.bold))
                     SongRows(songs: a.songs.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }, showCover: true)
                 }
-                .padding(24).padding(.bottom, 80)
+                .padding(.horizontal, 24).padding(.bottom, 90).padding(.top, 12)
             }
             .navigationTitle(a.id)
+            .task { await profiles.load(name) }
         } else { Text("No songs by this artist.").foregroundStyle(.secondary) }
+    }
+
+    private func header(_ a: ArtistInfo, _ profile: ArtistProfiles.Profile?) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let p = profile?.photo, !p.isEmpty, let u = URL(string: p) {
+                    AsyncImage(url: u) { ph in
+                        if let img = ph.image { img.resizable().aspectRatio(contentMode: .fill) } else { fallbackBanner(a) }
+                    }
+                } else { fallbackBanner(a) }
+            }
+            .frame(maxWidth: .infinity).frame(height: 280).clipped()
+            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(a.id).font(.system(size: 40, weight: .heavy)).foregroundStyle(.white).shadow(radius: 6)
+                if let b = profile?.blurb, !b.isEmpty { Text(b.prefix(1).uppercased() + b.dropFirst()).font(.system(size: 13)).foregroundStyle(.white.opacity(0.8)) }
+                HStack(spacing: 10) {
+                    PlayButtons(songs: a.songs)
+                    Button { Radio.shared.start(artist: a.id) } label: { Label("Radio", systemImage: "dot.radiowaves.left.and.right").frame(minWidth: 60) }.buttonStyle(.bordered).controlSize(.large)
+                    Button { NotificationCenter.default.post(name: .ytSearch, object: [a.id, "artist"]) } label: { Label("Get more", systemImage: "arrow.down.circle") }.buttonStyle(.bordered).controlSize(.large)
+                }
+            }
+            .padding(22)
+        }
+        .frame(height: 280)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
+    }
+
+    private func fallbackBanner(_ a: ArtistInfo) -> some View {
+        ZStack {
+            if let img = Covers.image(a.cover, maxPixel: 600) { Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).blur(radius: 40).scaleEffect(1.3) }
+            Color.black.opacity(0.25)
+        }
+        .background(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
     }
 }

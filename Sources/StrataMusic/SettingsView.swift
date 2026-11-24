@@ -18,6 +18,8 @@ struct SettingsView: View {
 struct GeneralSettings: View {
     @EnvironmentObject var lib: Library
     @AppStorage("leaves") private var leaves = true
+    @AppStorage("liveYt") private var liveYt = true
+    @AppStorage("homeReleases") private var homeReleases = true
 
     var body: some View {
         Form {
@@ -44,6 +46,8 @@ struct GeneralSettings: View {
             }
             Section("Player") {
                 Toggle("Falling leaves (The Thanksgiving Update)", isOn: $leaves)
+                Toggle("Show YouTube results while I type in search", isOn: $liveYt)
+                Toggle("Look for new releases from my artists (weekly)", isOn: $homeReleases)
             }
             Section("Opus and Ogg files") {
                 Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
