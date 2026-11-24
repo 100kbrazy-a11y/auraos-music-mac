@@ -194,4 +194,14 @@ Port the Android Customize screen, keeping its groups.
 ## Progress
 - [x] 1.0.x: library, player, lyrics, Discord, export, updater, icon, installer window
 - [x] 1.1.0: YouTube search and downloads, search dropdown, queue, sleep timer, Recently Added
-- [ ] 1.2.0: Phase 1 (The Polish Update)
+- [x] 1.2.0: Phase 1, Polish (Esc, close button, bar and player motion, leaves behind the text, search pill, "Download everything" for an artist). Skipped: the shared-element cover morph (v2) and drag-up-to-open.
+- [x] 1.3.0: Phase 2, Sound (Opus decode, Enhanced engine: gapless, crossfade, EQ, speed; play counts). Not done: ReplayGain / volume levelling, the visualizer, the output-device picker.
+- [x] 1.4.0: Phase 3, Library (Edit Info, smart playlists, M3U, import from Music, folder watching, duplicates, find covers). Not done: drag and drop into playlists, collage covers, big-library speed work beyond debounced saves.
+- [x] 1.5.0: Phase 4, Discovery (Home, Radio, Replay, artist pages, YouTube results in search).
+- [x] 1.6.0: Phase 5, Mac (menu bar player, mini player, Dock menu, notifications, shortcuts and the ⌘/ sheet, full screen opens the player). Not done: App Intents / Shortcuts and widgets (they need an Xcode project), "karaoke on the TV" lyrics in full screen.
+- [x] 1.7.0: Phase 6, Lyrics (word by word, offset, import, no-lyrics mark, censor, romanise, translate on macOS 15+, share card, desktop lyrics, lyric in the menu bar).
+- [x] 1.8.0: Phase 7, Look (accent, backgrounds, glass tint and radius, player and bar options, list cover size, seasons). Not done: page order, library layout (list vs table), app icon variants.
+- [x] 1.9.0: Phase 8, Solid (Test YouTube, engine log, crash detection and diagnostics, engine auto-reset for search, unit tests in CI).
+- [x] 2.0.0: Sync through a shared folder (likes, playlists, play counts). Smart playlists don't sync yet. Not done: moving the code into a `StrataCore` library target, notarization (needs a Developer ID).
+
+Nothing in 1.2.0 to 2.0.0 has been run by a person on a real Mac yet. CI builds it, runs 14 unit tests, and starts the app and checks that it stays up for 8 seconds. The YouTube engine (BotGuard, the hidden web view), the Enhanced engine, Opus decoding, the menu bar and mini player, the Translation framework, sync and the notification attachments are all untested in real use.
