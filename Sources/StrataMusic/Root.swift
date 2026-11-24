@@ -55,6 +55,7 @@ struct RootView: View {
             }
             // the sidebar button, the title and the search box belong to the library, not to the full-screen player
             .toolbar(showPlayer ? .hidden : .automatic, for: .windowToolbar)
+            .toolbarBackground(.hidden, for: .windowToolbar)
             .toolbar {
                 ToolbarItem(placement: .automatic) { SearchField(text: $search, focus: $searchFocus) }
                 ToolbarItem(placement: .automatic) { Button { lib.pickMusic() } label: { Label("Add Music", systemImage: "plus") }.help("Add a music folder or songs") }
@@ -111,7 +112,10 @@ struct RootView: View {
             if w.frameAutosaveName != "StrataMainWindow" { _ = w.setFrameAutosaveName("StrataMainWindow") }
             let vis: NSWindow.TitleVisibility = showPlayer ? .hidden : .visible
             if w.titleVisibility != vis { w.titleVisibility = vis }
-            if w.titlebarAppearsTransparent != showPlayer { w.titlebarAppearsTransparent = showPlayer }
+            // no separate top bar: the window's own background runs all the way up
+            if !w.titlebarAppearsTransparent { w.titlebarAppearsTransparent = true }
+            if w.titlebarSeparatorStyle != .none { w.titlebarSeparatorStyle = .none }
+            if !w.styleMask.contains(.fullSizeContentView) { w.styleMask.insert(.fullSizeContentView) }
         })
         .overlay { UpdatePrompt() }
         .overlay { ArtistGrabPrompt() }

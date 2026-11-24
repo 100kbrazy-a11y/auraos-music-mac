@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.4.1",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "The top bar is gone: the window's background now runs all the way up, with the search box and the + button floating on it",
+    "Scroll bars only appear while you scroll, whatever your Mac's setting says"
+   ]
+  },
+  {
    "version": "2.4.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

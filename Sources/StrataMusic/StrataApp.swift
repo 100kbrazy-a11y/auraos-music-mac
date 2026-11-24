@@ -10,6 +10,11 @@ struct StrataApp: App {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("menuBar") private var menuBar = true
 
+    init() {
+        // scroll bars appear only while you scroll, whatever the Mac's own setting (this applies to Strata alone)
+        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()
