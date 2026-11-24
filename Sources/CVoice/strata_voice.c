@@ -23,7 +23,8 @@ struct strata_voice {
     double centre_s;     // seconds from the start of a frame to its middle
     float *level;        // loudness of the voice band, dB, lightly smoothed
     float *flux;         // how fast the voice is getting louder, summed over frequency
-    float thr;           // above this level there is singing
+    float thr;           // above this level there is singing (a rough, song-wide guess)
+    unsigned char *voiced;   // 1 where the voice is singing, judged against what is playing around it at that moment
 };
 
 typedef struct { float re, im; } cpx;
@@ -58,7 +59,7 @@ static float median15(const float *v) {
 
 void strata_voice_free(strata_voice *v) {
     if (!v) return;
-    free(v->level); free(v->flux); free(v);
+    free(v->level); free(v->flux); free(v->voiced); free(v);
 }
 
 double strata_voice_frame_seconds(const strata_voice *v) { return v->frame_s; }
@@ -160,6 +161,46 @@ strata_voice *strata_voice_analyze(const float *left, const float *right, int64_
         v->thr = lo + 0.33f * (hi - lo);
         free(sorted);
     }
+    {   // singing or not, decided locally: in a loud chorus the band plays all the time, so "loud" means little. What matters is how far the voice stands above what is under it right now.
+        v->voiced = malloc((size_t)T);
+        unsigned char *bin = malloc((size_t)T);
+        enum { NBIN = 256 };
+        int *cnt = calloc(NBIN, sizeof(int));
+        if (!v->voiced || !bin || !cnt) { free(bin); free(cnt); free(raw); goto fail; }
+        float lmin = v->level[0], lmax = v->level[0];
+        for (int t = 1; t < T; t++) { if (v->level[t] < lmin) lmin = v->level[t]; if (v->level[t] > lmax) lmax = v->level[t]; }
+        const float bw = (lmax - lmin) / (NBIN - 1) + 1e-6f;
+        for (int t = 0; t < T; t++) { int b = (int)((v->level[t] - lmin) / bw); bin[t] = (unsigned char)(b < 0 ? 0 : (b > NBIN - 1 ? NBIN - 1 : b)); }
+        const int H = (int)(5.0 / v->frame_s + 0.5);
+        int in = 0;
+        for (int t = 0; t <= H && t < T; t++) { cnt[bin[t]]++; in++; }
+        for (int t = 0; t < T; t++) {
+            if (t > 0) {
+                int add = t + H, rem = t - H - 1;
+                if (add < T) { cnt[bin[add]]++; in++; }
+                if (rem >= 0) { cnt[bin[rem]]--; in--; }
+            }
+            int tl = (int)(0.08 * in), th = (int)(0.92 * in), acc = 0, blo = -1, bhi = NBIN - 1;
+            for (int b = 0; b < NBIN; b++) { acc += cnt[b]; if (blo < 0 && acc > tl) blo = b; if (acc > th) { bhi = b; break; } }
+            float lo = lmin + (blo < 0 ? 0 : blo) * bw, hi = lmin + bhi * bw;
+            float thr = (hi - lo >= 5.0f) ? lo + 0.4f * (hi - lo) : v->thr;
+            v->voiced[t] = v->level[t] > thr;
+        }
+        free(bin); free(cnt);
+        // a gap of under 90 ms inside the singing is a consonant or a breath, not a pause; a blip of under 70 ms is not singing
+        for (int t = 0; t < T; ) {
+            if (v->voiced[t]) { t++; continue; }
+            int u = t; while (u < T && !v->voiced[u]) u++;
+            if (t > 0 && u < T && u - t < 4) memset(v->voiced + t, 1, (size_t)(u - t));
+            t = u;
+        }
+        for (int t = 0; t < T; ) {
+            if (!v->voiced[t]) { t++; continue; }
+            int u = t; while (u < T && v->voiced[u]) u++;
+            if (u - t < 3) memset(v->voiced + t, 0, (size_t)(u - t));
+            t = u;
+        }
+    }
     free(raw);
     free(mag); free(sim); free(vm); free(buf); free(tw); free(rev); free(win);
     return v;
@@ -260,18 +301,18 @@ static int match(int Ns, const double *cand, const double *strength, int Nc, con
     return nmatch;
 }
 
-int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *end) {
+int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *ends, double *end) {
     if (!v || n_words <= 0 || we <= ws) return 0;
     int w0 = frame_of(v, ws), w1 = frame_of(v, we);
     if (w1 - w0 < 8) return 0;
 
     // where the line is sung: the first steady stretch of voice in the window, to the last
     int s = -1;
-    for (int t = w0; t < w1 - 1; t++) if (v->level[t] > v->thr && v->level[t + 1] > v->thr) { s = t; break; }
+    for (int t = w0; t < w1 - 1; t++) if (v->voiced[t] && v->voiced[t + 1]) { s = t; break; }
     if (s < 0) return 0;
     if (s <= w0 + 1) { int b = frame_of(v, base - 0.1); if (b > s && b < w1 - 6) s = b; }   // singing already, from the line before: trust the stamp
     int e = s;
-    for (int t = w1 - 1; t > s; t--) if (v->level[t] > v->thr && v->level[t - 1] > v->thr) { e = t; break; }
+    for (int t = w1 - 1; t > s; t--) if (v->voiced[t] && v->voiced[t - 1]) { e = t; break; }
     if (e - s < 6) return 0;
     int Ns = 0;
     for (int i = 0; i < n_words; i++) Ns += syll[i] < 1 ? 1 : syll[i];
@@ -300,7 +341,26 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
     double dur = te - ts;
     double exp_t[MAXSYL], tsyl[MAXSYL];
     int matched[MAXSYL];
-    for (int j = 0; j < Ns; j++) { exp_t[j] = ts + dur * cum[j] / cum[Ns]; tsyl[j] = exp_t[j]; matched[j] = 0; }
+    for (int j = 0; j < Ns; j++) { exp_t[j] = ts + dur * cum[j] / cum[Ns]; matched[j] = 0; }
+    {   // a pause inside the line (a breath, a beat of music) takes no syllables: spread them over the time that is actually sung
+        int len = e - s + 1;
+        int *cv = malloc(sizeof(int) * (size_t)(len + 1));
+        if (cv) {
+            cv[0] = 0;
+            for (int k = 0; k < len; k++) cv[k + 1] = cv[k] + (v->voiced[s + k] ? 1 : 0);
+            if (cv[len] >= 6) {
+                int k = 0;
+                for (int j = 0; j < Ns; j++) {
+                    double target = cv[len] * cum[j] / cum[Ns];
+                    while (k < len && cv[k] < target) k++;
+                    double tt = time_of(v, s + (k > 0 ? k - 1 : 0)) - 0.5 * v->frame_s;
+                    exp_t[j] = tt < ts ? ts : (tt > te ? te : tt);
+                }
+            }
+            free(cv);
+        }
+    }
+    for (int j = 0; j < Ns; j++) tsyl[j] = exp_t[j];
     double scale = 1.5 * (dur / (Ns > 0 ? Ns : 1)) + 0.1;
 
     double cand[MAXCAND], strength[MAXCAND];
@@ -334,6 +394,15 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
             prev = j;
         }
     }
+    // a start that lands in silence moves to where the voice comes in (if it does soon): nothing is lit while nobody sings
+    for (int j = 0; j < Ns; j++) {
+        int f = frame_of(v, tsyl[j]), lim = frame_of(v, tsyl[j] + 0.7), any = 0;
+        for (int k = f; k < f + 5 && k < v->frames; k++) if (v->voiced[k]) { any = 1; break; }
+        if (any) continue;
+        int k = f;
+        while (k < lim && k < w1 && !v->voiced[k]) k++;
+        if (k < lim && v->voiced[k]) tsyl[j] = time_of(v, k) - 0.5 * v->frame_s;
+    }
     for (int j = 1; j < Ns; j++) if (tsyl[j] < tsyl[j - 1] + 0.04) tsyl[j] = tsyl[j - 1] + 0.04;
 
     // the start of each word is the start of its first syllable
@@ -345,5 +414,24 @@ int strata_voice_align_line(const strata_voice *v, double ws, double we, double 
         j += sy;
     }
     for (int i = 1; i < n_words; i++) if (starts[i] < starts[i - 1]) starts[i] = starts[i - 1];
+    if (ends) {
+        // a word ends where the voice stops after its last syllable (a breath, a gap), or where the next word starts
+        int j0 = 0;
+        for (int i = 0; i < n_words; i++) {
+            int sy = syll[i] < 1 ? 1 : syll[i];
+            int jl = j0 + sy - 1; if (jl >= Ns) jl = Ns - 1;
+            double next = i + 1 < n_words ? starts[i + 1] : te;
+            if (next < starts[i] + 0.12) next = starts[i] + 0.12;
+            int f = frame_of(v, (tsyl[jl] > starts[i] ? tsyl[jl] : starts[i]) + 0.06), fe = frame_of(v, next);
+            if (f > fe) f = fe;
+            int k = f;
+            while (k < fe && v->voiced[k]) k++;
+            double tend = k >= fe ? next : time_of(v, k) - 0.5 * v->frame_s + 0.03;
+            if (tend < starts[i] + 0.12) tend = starts[i] + 0.12;
+            if (tend > next) tend = next;
+            ends[i] = tend;
+            j0 += sy;
+        }
+    }
     return quality;
 }

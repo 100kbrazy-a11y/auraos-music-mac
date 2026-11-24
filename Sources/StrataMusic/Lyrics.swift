@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct LyricWord: Hashable {
     let text: String       // includes the space after it
     let start: Double
+    var end: Double? = nil   // when it stops being sung, if the file says (a time with no word after it): after a pause, nothing stays lit
 }
 
 struct LyricLine: Identifiable, Hashable {
@@ -257,7 +258,8 @@ final class LyricsStore: ObservableObject {
             } else {
                 l.words = o.2
                 let last = o.2[o.2.count - 1].start
-                l.sungEnd = last + min(1.2, max(0.45, next - last))
+                if let e = o.2[o.2.count - 1].end, e > last { l.sungEnd = e }
+                else { l.sungEnd = last + min(1.2, max(0.45, next - last)) }
             }
             result.append(l)
         }
@@ -276,6 +278,7 @@ final class LyricsStore: ObservableObject {
             let end = i + 1 < ms.count ? ms[i + 1].range.location : ns.length
             let chunk = ns.substring(with: NSRange(location: m.range.location + m.range.length, length: end - (m.range.location + m.range.length)))
             if !chunk.isEmpty { words.append(LyricWord(text: chunk, start: t)); plain += chunk }
+            else if let last = words.last, t > last.start, last.end == nil { words[words.count - 1].end = t }
         }
         return (plain.trimmingCharacters(in: .whitespaces), words)
     }

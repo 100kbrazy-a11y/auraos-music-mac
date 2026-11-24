@@ -16,9 +16,9 @@ int strata_voice_syllables(const char *word);
 /// Lines one line of lyrics up against the voice.
 ///   ws, we: the stretch of the song (seconds) the line is somewhere inside; base: the time its stamp says it starts
 ///   n_words / syll: how many words, and how many syllables each has; quick: 1 for a word that is sung fast and short (a stutter or a repeated "la la"), else 0 (may be NULL)
-///   starts: out, when each word begins (seconds); end: out, when the line stops being sung
+///   starts: out, when each word begins (seconds); ends: out (may be NULL), when each word stops being sung (before the next one starts if there is a pause); end: out, when the line stops being sung
 /// Returns 0 when no singing was found there, 1 when the words were spread over the singing, 2 when they were matched to syllables.
-int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *end);
+int strata_voice_align_line(const strata_voice *v, double ws, double we, double base, int n_words, const int *syll, const int *quick, double *starts, double *ends, double *end);
 
 /// seconds of song per analysis frame, and the loudness of the voice at [t] seconds (for tests and drawing)
 double strata_voice_frame_seconds(const strata_voice *v);

@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "2.9.1",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Words are no longer lit while nobody is singing: the timing now records when each word stops being sung, so a word before a breath or a gap finishes and the highlight waits for the next word instead of crawling across the silence.",
+    "A sharper voice finder: it judges what is singing against what is playing around it at that moment, so a loud chorus or a steady bass no longer counts as singing everywhere, and tiny blips and short dips no longer break a line up.",
+    "Words are spread over the time that is actually sung, and a word that would land in silence moves to where the voice really comes in.",
+    "Songs timed before this update are timed again the next time they play."
+   ]
+  },
+  {
    "version": "2.9.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

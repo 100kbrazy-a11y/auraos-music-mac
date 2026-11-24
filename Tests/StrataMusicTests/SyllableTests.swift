@@ -21,3 +21,19 @@ final class SyllableTests: XCTestCase {
         XCTAssertEqual(Syllables.quick(["hello", "there"]), [0, 0])
     }
 }
+
+@MainActor
+final class WordEndTests: XCTestCase {
+    func testEndTags() throws {
+        // a time with no word after it says where the word before it stops being sung
+        let l = try XCTUnwrap(LyricsStore.parse("[00:01.00]<00:01.00>one <00:01.50><00:03.00>two <00:03.40>\n[00:06.00]<00:06.00>three <00:06.50>four"))
+        XCTAssertEqual(l[0].words.map { $0.text }, ["one ", "two "])
+        XCTAssertEqual(try XCTUnwrap(l[0].words[0].end), 1.5, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(l[0].words[1].end), 3.4, accuracy: 0.001)
+        XCTAssertEqual(l[0].sungEnd, 3.4, accuracy: 0.001)
+        XCTAssertEqual(l[0].text, "one two")
+        // an ordinary enhanced line has no ends
+        XCTAssertNil(l[1].words[0].end)
+        XCTAssertEqual(l[1].words.map { $0.text }, ["three ", "four"])
+    }
+}

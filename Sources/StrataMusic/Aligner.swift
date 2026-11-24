@@ -138,16 +138,17 @@ enum Aligner {
         for (i, line) in lines.enumerated() {
             let base = line.time + offset
             let parts = pieces(line)
-            var starts: [Double]? = nil
+            var starts: ([Double], [Double])? = nil
             if let w = window(lines, i, offset: offset, seconds: seconds), !parts.isEmpty {
                 var syll = parts.map { Int32(Syllables.count($0)) }
                 var quick = Syllables.quick(parts)
                 var s = [Double](repeating: 0, count: parts.count)
+                var e = [Double](repeating: 0, count: parts.count)
                 var end = 0.0
-                let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &quick, &s, &end)
-                if q > 0 { starts = s }
+                let q = strata_voice_align_line(voice, w.0, w.1, base, Int32(parts.count), &syll, &quick, &s, &e, &end)
+                if q > 0 { starts = (s, e) }
             }
-            if var s = starts {
+            if var (s, e) = starts {
                 // inside the line's own slot, and never before the one before it
                 let slot = slot(lines, i, offset: offset)
                 let lastOK = max(slot.start, slot.end - 0.12)
@@ -157,12 +158,18 @@ enum Aligner {
                 done += 1
                 prevStamp = first
                 out += "[\(stamp(first))]"
-                for (k, p) in parts.enumerated() { out += "<\(stamp(s[k]))>\(p)" }
+                for (k, p) in parts.enumerated() {
+                    out += "<\(stamp(s[k]))>\(p)"
+                    // where the singing of a word stops (a breath, a pause, the end of the line), written as a time with no word after it, so nothing is lit while nobody sings
+                    let nextStart = k + 1 < s.count ? s[k + 1] : slot.end
+                    let stop = min(max(e[k] + 0.03, s[k] + 0.1), nextStart)
+                    if stop < nextStart - 0.15 || k + 1 == s.count { out += "<\(stamp(stop))>" }
+                }
             } else {
                 let st = max(prevStamp, base)
                 prevStamp = st
                 out += "[\(stamp(st))]"
-                if line.tagged { for w in line.words { out += "<\(stamp(w.start + offset))>\(w.text)" } }
+                if line.tagged { for w in line.words { out += "<\(stamp(w.start + offset))>\(w.text)"; if let e = w.end { out += "<\(stamp(e + offset))>" } } }
                 else { out += line.text }
             }
             out += "\n"
