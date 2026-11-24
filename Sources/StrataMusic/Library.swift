@@ -14,6 +14,7 @@ struct Song: Identifiable, Codable, Hashable {
     var duration: Double
     var cover: String          // file name inside the covers folder ("" = none)
     var added: Double
+    var yt: String? = nil      // the YouTube id, for songs downloaded in the app
 
     var url: URL { URL(fileURLWithPath: path) }
     var ext: String { url.pathExtension.lowercased() }
@@ -210,6 +211,31 @@ final class Library: ObservableObject {
         }
     }
 
+    /// a song the app just downloaded: tags from the YouTube track, the cover saved next to the library's other covers
+    func addDownloaded(_ url: URL, track t: Track, cover: Data?, fallbackDuration: Double) async -> Song? {
+        if let have = songs.first(where: { $0.path == url.path }) { return have }
+        var s: Song
+        if let read = await Disk.readSong(url) { s = read }
+        else if fallbackDuration > 1 {
+            s = Song(id: fnv(Data(url.path.utf8)), path: url.path, title: t.title, artist: t.artist, album: "", albumArtist: "", track: 0, year: "", duration: fallbackDuration, cover: "", added: Date().timeIntervalSince1970)
+        } else { return nil }
+        if !t.title.isEmpty { s.title = t.title }
+        if !t.artist.isEmpty { s.artist = t.artist }
+        if !t.album.isEmpty { s.album = t.album }
+        if !t.albumArtist.isEmpty { s.albumArtist = t.albumArtist }
+        if !t.year.isEmpty { s.year = t.year }
+        if t.track > 0 { s.track = t.track }
+        if s.cover.isEmpty, let d = cover, d.count > 200 {
+            let name = fnv(d.prefix(8192)) + "-\(d.count).img"
+            let dest = Disk.dir.appendingPathComponent("covers/\(name)")
+            if !FileManager.default.fileExists(atPath: dest.path) { try? d.write(to: dest) }
+            s.cover = name
+        }
+        s.yt = t.id
+        songs.append(s); rebuild(); save()
+        return s
+    }
+
     func rescan() {
         let urls = folders.map { URL(fileURLWithPath: $0) }
         songs = songs.filter { FileManager.default.fileExists(atPath: $0.path) }
@@ -227,6 +253,7 @@ final class Library: ObservableObject {
 
     func isFav(_ s: Song) -> Bool { favorites.contains(s.id) }
     func toggleFav(_ s: Song) { if favorites.contains(s.id) { favorites.remove(s.id) } else { favorites.insert(s.id) }; save() }
+    var recentSongs: [Song] { Array(songs.sorted { $0.added > $1.added }.prefix(300)) }
     var favoriteSongs: [Song] { songs.filter { favorites.contains($0.id) } }
 
     func newPlaylist(_ name: String, with ids: [String] = []) {

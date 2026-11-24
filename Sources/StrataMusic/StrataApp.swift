@@ -28,6 +28,9 @@ struct StrataApp: App {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { Task { await updater.check() } }
             }
+            CommandGroup(after: .textEditing) {
+                Button("Search") { NotificationCenter.default.post(name: .focusSearch, object: nil) }.keyboardShortcut("f")
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Add Music…") { lib.pickMusic() }.keyboardShortcut("o")
             }

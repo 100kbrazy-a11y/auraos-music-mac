@@ -1,5 +1,7 @@
-.build/
-dist/
-build/
-.DS_Store
 *.xcodeproj
+.DS_Store
+.build/
+build/
+dist/
+engine/dist/
+node_modules/

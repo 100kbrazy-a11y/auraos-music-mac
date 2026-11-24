@@ -1,0 +1,14 @@
+{
+  "name": "strata-mac-engine",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "The YouTube engine that runs in the Mac app's hidden web view (built by CI into Resources/engine.js)",
+  "dependencies": {
+    "bgutils-js": "4.0.3",
+    "youtubei.js": "18.3.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.7"
+  }
+}

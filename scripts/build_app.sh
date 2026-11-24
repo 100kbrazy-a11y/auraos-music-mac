@@ -20,6 +20,7 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o build/AppIcon.icns
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+[ -f engine/dist/engine.js ] && cp engine/dist/engine.js "$APP/Contents/Resources/engine.js" || echo "warning: engine/dist/engine.js is missing, so YouTube search and downloads will not work in this build"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

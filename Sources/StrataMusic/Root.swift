@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 
 enum Nav: Hashable {
-    case songs, albums, artists, favorites
+    case songs, recent, albums, artists, favorites
+    case youtube, downloads
     case playlist(String)
 }
 
@@ -10,18 +11,22 @@ struct RootView: View {
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
     @EnvironmentObject var updater: Updater
+    @ObservedObject var dl = Downloads.shared
+    @AppStorage("leaves") private var leaves = true
     @State private var nav: Nav? = .songs
+    @State private var path = NavigationPath()
     @State private var showPlayer = false
     @State private var search = ""
     @State private var dropping = false
+    @FocusState private var searchFocus: Bool
 
     var body: some View {
         ZStack {
             NavigationSplitView {
-                SidebarView(nav: $nav)
+                SidebarView(nav: Binding(get: { nav }, set: { nav = $0; path = NavigationPath() }))
                     .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             } detail: {
-                DetailRoot(nav: nav ?? .songs, search: search)
+                DetailRoot(nav: nav ?? .songs, search: search, path: $path)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if player.current != nil { NowPlayingBar(open: openPlayer) }
                     }
@@ -32,30 +37,178 @@ struct RootView: View {
                         }
                     }
             }
-            .searchable(text: $search, placement: .toolbar, prompt: "Search your library")
+            // the sidebar button, the title and the search box belong to the library, not to the full-screen player
+            .toolbar(showPlayer ? .hidden : .automatic, for: .windowToolbar)
             .toolbar {
+                ToolbarItem(placement: .automatic) { SearchField(text: $search, focus: $searchFocus) }
                 ToolbarItem(placement: .automatic) { Button { lib.pickMusic() } label: { Label("Add Music", systemImage: "plus") }.help("Add a music folder or songs") }
             }
             .animation(.easeInOut(duration: 0.2), value: lib.status)
 
+            // typing in the search box: the page dims and a list of matches drops down
+            if searchFocus && !showPlayer {
+                Color.black.opacity(0.5).ignoresSafeArea()
+                    .onTapGesture { searchFocus = false }
+                    .transition(.opacity).zIndex(1)
+                HStack { Spacer(); SearchDropdown(query: search, openSong: openSong, openAlbum: openAlbum, openArtist: openArtist, web: searchWeb).padding(.top, 6).padding(.trailing, 14) }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity)).zIndex(2)
+            }
+
+            if showPlayer {
+                AuroraBackground(color: player.accent).ignoresSafeArea()
+                    .transition(.opacity).zIndex(3)
+            }
+            // one set of leaves for the whole window: opening the player doesn't restart them, it just puts the player in front
+            if leaves { FallingLeaves().ignoresSafeArea().zIndex(4) }
             if showPlayer {
                 FullPlayerView(close: closePlayer)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(1)
+                    .zIndex(5)
             }
         }
+        .animation(.easeOut(duration: 0.18), value: searchFocus)
         .dropDestination(for: URL.self) { urls, _ in lib.importURLs(urls, remember: true); return true } isTargeted: { dropping = $0 }
         .overlay { if dropping { RoundedRectangle(cornerRadius: 14).strokeBorder(player.accent, lineWidth: 3).padding(6).allowsHitTesting(false) } }
         .background(Color(red: 0.07, green: 0.07, blue: 0.08))
+        .background(WindowAccessor { w in
+            w.titleVisibility = showPlayer ? .hidden : .visible
+            w.titlebarAppearsTransparent = showPlayer
+        })
         .overlay { UpdatePrompt() }
+        .onAppear { Downloads.shared.lib = lib }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
+        .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in if !showPlayer { searchFocus = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .showDownloads)) { _ in nav = .downloads; path = NavigationPath() }
+        .onReceive(NotificationCenter.default.publisher(for: .goRef)) { n in
+            if let a = n.object as? AlbumRef { openAlbum(a.key) } else if let a = n.object as? ArtistRef { openArtist(a.name) }
+            if showPlayer { closePlayer() }
+        }
     }
 
-    private func openPlayer() { withAnimation(.spring(response: 0.46, dampingFraction: 0.9)) { showPlayer = true } }
+    private func openPlayer() { searchFocus = false; withAnimation(.spring(response: 0.46, dampingFraction: 0.9)) { showPlayer = true } }
     private func closePlayer() { withAnimation(.spring(response: 0.42, dampingFraction: 0.92)) { showPlayer = false } }
+
+    private func finishSearch() { search = ""; searchFocus = false }
+    private func openSong(_ s: Song, _ list: [Song]) { player.play(s, in: list); finishSearch() }
+    private func openAlbum(_ key: String) { nav = .albums; path = NavigationPath(); path.append(AlbumRef(key: key)); finishSearch() }
+    private func openArtist(_ name: String) { nav = .artists; path = NavigationPath(); path.append(ArtistRef(name: name)); finishSearch() }
+    private func searchWeb() {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        YouTube.shared.query = q; YouTube.shared.type = "song"
+        nav = .youtube; path = NavigationPath(); search = ""; searchFocus = false
+        Task { await YouTube.shared.run() }
+    }
 }
 
-extension Notification.Name { static let openPlayer = Notification.Name("strata.openPlayer") }
+extension Notification.Name {
+    static let openPlayer = Notification.Name("strata.openPlayer")
+    static let focusSearch = Notification.Name("strata.focusSearch")
+    static let goRef = Notification.Name("strata.goRef")
+    static let showDownloads = Notification.Name("strata.showDownloads")
+}
+
+// MARK: - the search box and its drop-down
+
+struct SearchField: View {
+    @Binding var text: String
+    var focus: FocusState<Bool>.Binding
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.secondary)
+            TextField("Search", text: $text)
+                .textFieldStyle(.plain).font(.system(size: 13)).focused(focus)
+                .onExitCommand { text = ""; focus.wrappedValue = false }
+                .onSubmit { focus.wrappedValue = false }
+            if !text.isEmpty { Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .frame(width: 240)
+        .background(Capsule().fill(Color.white.opacity(focus.wrappedValue ? 0.14 : 0.08)))
+    }
+}
+
+struct SearchDropdown: View {
+    let query: String
+    var openSong: (Song, [Song]) -> Void
+    var openAlbum: (String) -> Void
+    var openArtist: (String) -> Void
+    var web: () -> Void
+    @EnvironmentObject var lib: Library
+    @EnvironmentObject var player: Player
+
+    private var q: String { query.trimmingCharacters(in: .whitespaces) }
+
+    var body: some View {
+        let songs = q.isEmpty ? [] : lib.songs.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) || $0.album.localizedCaseInsensitiveContains(q) }
+        let albums = q.isEmpty ? [] : lib.albums.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q) }
+        let artists = q.isEmpty ? [] : lib.artists.filter { $0.id.localizedCaseInsensitiveContains(q) }
+        VStack(alignment: .leading, spacing: 0) {
+            if !q.isEmpty {
+                Button(action: web) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "globe").font(.system(size: 15, weight: .semibold)).frame(width: 30, height: 30).background(Circle().fill(player.accent.opacity(0.35)))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Not showing up? Search the web →").font(.system(size: 13, weight: .semibold))
+                            Text("Look for “\(q)” on YouTube and download it").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider().opacity(0.5)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    if q.isEmpty {
+                        Text("Search your songs, albums and artists").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
+                    } else if songs.isEmpty && albums.isEmpty && artists.isEmpty {
+                        Text("Nothing in your library matches “\(q)”").foregroundStyle(.secondary).font(.system(size: 12.5)).padding(16)
+                    }
+                    if !songs.isEmpty {
+                        header("Songs")
+                        ForEach(songs.prefix(6)) { s in
+                            row(CoverView(song: s, size: 34, radius: 6), s.title, s.shownArtist + (s.album.isEmpty ? "" : " · " + s.album), s.id == player.current?.id) { openSong(s, songs) }
+                        }
+                    }
+                    if !albums.isEmpty {
+                        header("Albums")
+                        ForEach(albums.prefix(3)) { a in row(CoverView(song: a.cover, size: 34, radius: 6), a.title, a.artist, false) { openAlbum(a.id) } }
+                    }
+                    if !artists.isEmpty {
+                        header("Artists")
+                        ForEach(artists.prefix(3)) { a in row(CoverView(song: a.cover, size: 34, radius: 17), a.id, "\(a.songs.count) songs", false) { openArtist(a.id) } }
+                    }
+                }
+                .padding(.bottom, 6)
+            }
+            .frame(maxHeight: 380)
+        }
+        .frame(width: 400)
+        .glass(18)
+        .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+    }
+
+    private func header(_ t: String) -> some View {
+        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary).textCase(.uppercase).padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 2)
+    }
+
+    private func row<C: View>(_ cover: C, _ title: String, _ sub: String, _ playing: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                cover
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1).foregroundStyle(playing ? player.accent : Color.primary)
+                    Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 4).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 // MARK: - sidebar
 
@@ -63,6 +216,7 @@ struct SidebarView: View {
     @Binding var nav: Nav?
     @EnvironmentObject var lib: Library
     @EnvironmentObject var updater: Updater
+    @ObservedObject var dl = Downloads.shared
     @State private var renaming: Playlist?
     @State private var newName = ""
 
@@ -70,9 +224,14 @@ struct SidebarView: View {
         List(selection: $nav) {
             Section("Library") {
                 Label("Songs", systemImage: "music.note").tag(Nav.songs)
+                Label("Recently Added", systemImage: "clock").tag(Nav.recent)
                 Label("Albums", systemImage: "square.stack").tag(Nav.albums)
                 Label("Artists", systemImage: "music.mic").tag(Nav.artists)
                 Label("Favorites", systemImage: "heart").tag(Nav.favorites)
+            }
+            Section("YouTube") {
+                Label("Search & Download", systemImage: "magnifyingglass").tag(Nav.youtube)
+                Label("Downloads", systemImage: "arrow.down.circle").badge(dl.active).tag(Nav.downloads)
             }
             Section("Playlists") {
                 ForEach(lib.playlists) { p in
@@ -87,12 +246,17 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            if let r = updater.available {
-                Button { updater.showPrompt = true } label: {
-                    Label("Update to \(r.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
+            VStack(spacing: 8) {
+                if let r = updater.available {
+                    Button { updater.showPrompt = true } label: {
+                        Label("Update to \(r.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent).padding(10)
+                Button { openSettingsWindow() } label: { Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
             }
+            .padding(10)
         }
         .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -107,16 +271,20 @@ struct SidebarView: View {
 struct DetailRoot: View {
     let nav: Nav
     let search: String
+    @Binding var path: NavigationPath
     @EnvironmentObject var lib: Library
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 switch nav {
                 case .songs: SongTable(songs: lib.songs, search: search)
+                case .recent: SongTable(songs: lib.recentSongs, search: search, recent: true)
                 case .albums: AlbumsView(search: search)
                 case .artists: ArtistsView(search: search)
                 case .favorites: SongTable(songs: lib.favoriteSongs, search: search)
+                case .youtube: YouTubeView()
+                case .downloads: DownloadsView()
                 case .playlist(let id):
                     if let p = lib.playlists.first(where: { $0.id == id }) { SongTable(songs: lib.songs(in: p), search: search) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
                 }
@@ -124,6 +292,8 @@ struct DetailRoot: View {
             .navigationTitle(title)
             .navigationDestination(for: AlbumRef.self) { AlbumDetail(key: $0.key) }
             .navigationDestination(for: ArtistRef.self) { ArtistDetail(name: $0.name) }
+            .navigationDestination(for: YtCollection.self) { YtCollectionView(c: $0) }
+            .navigationDestination(for: YtArtistRef.self) { YtArtistView(a: $0) }
         }
         .id(nav)
     }
@@ -131,9 +301,12 @@ struct DetailRoot: View {
     private var title: String {
         switch nav {
         case .songs: return "Songs"
+        case .recent: return "Recently Added"
         case .albums: return "Albums"
         case .artists: return "Artists"
         case .favorites: return "Favorites"
+        case .youtube: return "Search & Download"
+        case .downloads: return "Downloads"
         case .playlist(let id): return lib.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
         }
     }
@@ -206,6 +379,7 @@ struct NowPlayingBar: View {
                     }
                     Spacer(minLength: 12)
                     TransportButtons()
+                    QueueButton().foregroundStyle(.secondary).padding(.leading, 4)
                     Button { open() } label: { Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.leading, 6)
                 }
                 .padding(.horizontal, 14).padding(.top, 9).padding(.bottom, 4)

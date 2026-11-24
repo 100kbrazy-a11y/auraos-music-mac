@@ -12,8 +12,13 @@ struct SongTable: View {
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
     @State private var selection = Set<String>()
-    @State private var order = [KeyPathComparator(\Song.title)]
+    @State private var order: [KeyPathComparator<Song>]
     @State private var exporting: Song?
+
+    init(songs: [Song], search: String = "", recent: Bool = false) {
+        self.songs = songs; self.search = search
+        _order = State(initialValue: recent ? [KeyPathComparator(\Song.added, order: .reverse)] : [KeyPathComparator(\Song.title)])
+    }
 
     private var shown: [Song] {
         let q = search.trimmingCharacters(in: .whitespaces)
@@ -48,6 +53,9 @@ struct SongTable: View {
                     Divider()
                     Button("New Playlist…") { lib.newPlaylist("New Playlist", with: picked.map { $0.id }) }
                 }
+                Divider()
+                Button("Go to Album") { NotificationCenter.default.post(name: .goRef, object: AlbumRef(key: first.albumKey)) }
+                Button("Go to Artist") { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: first.artistKey)) }
                 Divider()
                 Button("Export…") { exporting = first }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(picked.map { $0.url }) }

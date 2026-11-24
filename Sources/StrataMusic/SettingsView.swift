@@ -5,10 +5,11 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
+            DownloadSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
             DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 520, height: 400)
+        .frame(width: 540, height: 430)
     }
 }
 
@@ -42,6 +43,40 @@ struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+struct DownloadSettings: View {
+    @EnvironmentObject var lib: Library
+    @AppStorage("dlParallel") private var parallel = 2
+    @State private var folder = Downloads.folder
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Save songs in") {
+                    HStack {
+                        Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                        Button("Choose…") { choose() }
+                        Button { NSWorkspace.shared.open(folder) } label: { Image(systemName: "arrow.up.forward.square") }.help("Show in Finder")
+                    }
+                }
+                Stepper("Songs downloading at once: \(parallel)", value: $parallel, in: 1...4)
+            } footer: {
+                Text("Songs from YouTube are saved as M4A (AAC) files with their title, artist, album and cover, then added to your library. Search and download from the YouTube page in the sidebar, or from the search box when a song isn't in your library.")
+            }
+            Section("Now") {
+                LabeledContent("Downloading", value: "\(Downloads.shared.active)")
+                Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true); NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil) }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func choose() {
+        let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true; p.prompt = "Choose"
+        p.directoryURL = folder
+        if p.runModal() == .OK, let u = p.url { Downloads.folder = u; folder = u }
     }
 }
 

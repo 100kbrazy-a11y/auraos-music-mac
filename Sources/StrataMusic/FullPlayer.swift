@@ -4,14 +4,11 @@ import AppKit
 /// the full-screen player: three pages (Lyrics, Current Song, Artist) and the little glass pill that switches them
 struct FullPlayerView: View {
     @EnvironmentObject var player: Player
-    @AppStorage("leaves") private var leaves = true
     var close: () -> Void
     @State private var page = 1
 
     var body: some View {
         ZStack {
-            AuroraBackground(color: player.accent).ignoresSafeArea()
-            if leaves { FallingLeaves().ignoresSafeArea() }
             Group {
                 switch page {
                 case 0: LyricsPage()
@@ -21,7 +18,7 @@ struct FullPlayerView: View {
             }
             .id(page)
             .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            .padding(.top, 56).padding(.bottom, 92)
+            .padding(.top, 64).padding(.bottom, 92)
 
             VStack {
                 HStack {
@@ -31,12 +28,11 @@ struct FullPlayerView: View {
                     .buttonStyle(.plain).help("Close the player")
                     Spacer()
                 }
-                .padding(.horizontal, 22).padding(.top, 14)
+                .padding(.leading, 86).padding(.trailing, 22).padding(.top, 10)    // right of the window's traffic lights
                 Spacer()
                 TabPill(page: $page)
             }
         }
-        .background(Color.black)
         .onExitCommand(perform: close)
         .onReceive(NotificationCenter.default.publisher(for: .playerPage)) { n in
             if let p = n.object as? Int { withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = p } }
@@ -135,6 +131,8 @@ struct ExtraControls: View {
             Button { player.shuffle.toggle() } label: { Image(systemName: "shuffle").foregroundStyle(player.shuffle ? player.accent : Color.white.opacity(0.7)) }
             Button { player.cycleRepeat() } label: { Image(systemName: player.repeatMode == 2 ? "repeat.1" : "repeat").foregroundStyle(player.repeatMode > 0 ? player.accent : Color.white.opacity(0.7)) }
             Spacer()
+            SleepButton().foregroundStyle(.white.opacity(0.7))
+            QueueButton().foregroundStyle(.white.opacity(0.7))
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))
             Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 110).tint(.white)
             Image(systemName: "speaker.wave.3.fill").foregroundStyle(.white.opacity(0.6))

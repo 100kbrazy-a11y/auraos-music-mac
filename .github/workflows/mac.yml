@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: engine/package-lock.json }
+
+      - name: Build the YouTube engine (runs in the app's hidden web view)
+        working-directory: engine
+        run: |
+          npm ci --no-audit --no-fund
+          npx vite build
+          ls -la dist
+
       - name: Newest Xcode (Liquid Glass needs the macOS 26 SDK)
         run: |
           ls -d /Applications/Xcode*.app || true

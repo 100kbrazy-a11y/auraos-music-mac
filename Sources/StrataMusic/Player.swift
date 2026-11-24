@@ -20,7 +20,11 @@ final class Player: ObservableObject {
     @Published var shuffle = false { didSet { reshuffle() } }
     @Published var repeatMode = 0                      // 0 off, 1 all, 2 one
     @Published var volume: Float = 1 { didSet { avp.volume = volume } }
+    /// the sleep timer: stops the music at [sleepEnd], or when the current song ends
+    @Published private(set) var sleepEnd: Date?
+    @Published private(set) var sleepAtSongEnd = false
     let clock = Clock()
+    private var sleepTask: Task<Void, Never>?
 
     private let avp = AVPlayer()
     private var baseQueue: [Song] = []
@@ -64,6 +68,39 @@ final class Player: ObservableObject {
     func playNext(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.insert(s, at: min(index + 1, queue.count)) } }
     func enqueue(_ s: Song) { if queue.isEmpty { play(s, in: [s]) } else { queue.append(s) } }
 
+    /// jump to a song that is already in the queue
+    func jump(to i: Int) { guard queue.indices.contains(i) else { return }; index = i; load(queue[i], autoplay: true) }
+
+    func removeFromQueue(_ i: Int) {
+        guard queue.indices.contains(i), i != index else { return }
+        let gone = queue.remove(at: i)
+        if i < index { index -= 1 }
+        if let b = baseQueue.firstIndex(where: { $0.id == gone.id }) { baseQueue.remove(at: b) }
+    }
+
+    func clearUpNext() { if queue.indices.contains(index) { queue = Array(queue[0...index]) } }
+
+    // MARK: sleep timer
+
+    func sleep(minutes: Int) {
+        cancelSleep()
+        sleepEnd = Date().addingTimeInterval(Double(minutes) * 60)
+        sleepTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(minutes) * 60 * 1_000_000_000)
+            if !Task.isCancelled { await self?.fadeOutAndPause() }
+        }
+    }
+    func sleepAfterThisSong() { cancelSleep(); sleepAtSongEnd = true }
+    func cancelSleep() { sleepTask?.cancel(); sleepTask = nil; sleepEnd = nil; sleepAtSongEnd = false }
+
+    private func fadeOutAndPause() async {
+        sleepEnd = nil
+        let start = volume
+        for i in stride(from: 9, through: 0, by: -1) { avp.volume = start * Float(i) / 10; try? await Task.sleep(nanoseconds: 250_000_000) }
+        if isPlaying { togglePlay() }
+        avp.volume = start
+    }
+
     private func reshuffle() {
         guard let cur = current, !baseQueue.isEmpty else { return }
         if shuffle {
@@ -91,6 +128,7 @@ final class Player: ObservableObject {
     }
 
     private func ended() {
+        if sleepAtSongEnd { sleepAtSongEnd = false; avp.pause(); isPlaying = false; seek(to: 0); pushNowPlaying(); pushDiscord(); return }
         if repeatMode == 2 { seek(to: 0); avp.play(); isPlaying = true; return }
         if index + 1 < queue.count { index += 1; load(queue[index], autoplay: true) }
         else if repeatMode == 1, !queue.isEmpty { index = 0; load(queue[0], autoplay: true) }
