@@ -15,6 +15,7 @@ struct SongTable: View {
     @State private var order: [KeyPathComparator<Song>]
     @State private var exporting: Song?
     @State private var editing: Song?
+    @AppStorage("listCover") private var listCover = 34.0
 
     init(songs: [Song], search: String = "", recent: Bool = false, keepOrder: Bool = false) {
         self.songs = songs; self.search = search
@@ -32,7 +33,7 @@ struct SongTable: View {
         Table(list, selection: $selection, sortOrder: $order) {
             TableColumn("Title", value: \.title) { s in
                 HStack(spacing: 10) {
-                    CoverView(song: s, size: 34, radius: 6)
+                    CoverView(song: s, size: CGFloat(listCover), radius: 6)
                     Text(s.title).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)
                     if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
                     if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
@@ -145,13 +146,14 @@ struct AlbumsView: View {
 struct SongRows: View {
     let songs: [Song]
     var showCover = false
+    @AppStorage("listCover") private var listCover = 34.0
     @EnvironmentObject var lib: Library
     @EnvironmentObject var player: Player
     var body: some View {
         LazyVStack(spacing: 0) {
             ForEach(Array(songs.enumerated()), id: \.element.id) { i, s in
                 HStack(spacing: 12) {
-                    if showCover { CoverView(song: s, size: 36, radius: 6) }
+                    if showCover { CoverView(song: s, size: CGFloat(listCover) + 2, radius: 6) }
                     else { Text(s.track > 0 ? "\(s.track)" : "\(i + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing) }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(s.title).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)

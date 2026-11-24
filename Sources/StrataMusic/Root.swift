@@ -15,6 +15,7 @@ struct RootView: View {
     @EnvironmentObject var updater: Updater
     @ObservedObject var dl = Downloads.shared
     @AppStorage("leaves") private var leaves = true
+    @AppStorage("season") private var seasonRaw = ""
     @State private var nav: Nav? = .home
     @State private var path = NavigationPath()
     @State private var showPlayer = false
@@ -28,7 +29,8 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var grab = ArtistGrab.shared
 
-    private var showLeaves: Bool { leaves && !reduceMotion }
+    /// the falling effect to draw (nil = none)
+    private var fx: Season? { reduceMotion ? nil : Season.resolve(seasonRaw, legacyLeaves: leaves) }
 
     var body: some View {
         ZStack {
@@ -37,7 +39,7 @@ struct RootView: View {
                     .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             } detail: {
                 DetailRoot(nav: nav ?? .songs, search: search, path: $path)
-                    .background { if showLeaves { DetailLeaves(window: windowFrame) } }
+                    .background { if let fx = fx { DetailEffect(window: windowFrame, kind: fx) } }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if player.current != nil {
                             NowPlayingBar(open: openPlayer)
@@ -74,8 +76,8 @@ struct RootView: View {
             // so opening the player doesn't restart or speed them up
             if showPlayer {
                 ZStack {
-                    AuroraBackground(color: player.accent)
-                    if showLeaves { FallingLeaves(area: windowFrame.size) }
+                    PlayerBackdrop(accent: player.accent, song: player.current)
+                    if let fx = fx { SeasonEffect(kind: fx, area: windowFrame.size) }
                 }
                 .ignoresSafeArea().transition(.opacity).zIndex(3)
             }
@@ -544,31 +546,38 @@ struct TimeLabels: View {
 struct NowPlayingBar: View {
     @EnvironmentObject var player: Player
     @EnvironmentObject var lib: Library
+    @AppStorage("glassTint") private var glassTint = 1.0
+    @AppStorage("barRadius") private var barRadius = 26.0
+    @AppStorage("barCompact") private var compact = false
+    @AppStorage("barHeart") private var showHeart = true
+    @AppStorage("barQueue") private var showQueue = true
     var open: () -> Void
 
     var body: some View {
         if let s = player.current {
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
-                    CoverView(song: s, size: 46, radius: 10)
+                    CoverView(song: s, size: compact ? 36 : 46, radius: compact ? 8 : 10)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                         Text(s.shownArtist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                             .onTapGesture { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: s.artistKey)) }
                     }
                     Spacer(minLength: 12)
-                    Button { lib.toggleFav(s) } label: { Image(systemName: lib.isFav(s) ? "heart.fill" : "heart").foregroundStyle(lib.isFav(s) ? player.accent : Color.secondary) }
-                        .buttonStyle(.plain).help("Favorite")
+                    if showHeart {
+                        Button { lib.toggleFav(s) } label: { Image(systemName: lib.isFav(s) ? "heart.fill" : "heart").foregroundStyle(lib.isFav(s) ? player.accent : Color.secondary) }
+                            .buttonStyle(.plain).help("Favorite")
+                    }
                     TransportButtons()
-                    QueueButton().foregroundStyle(.secondary).padding(.leading, 4)
+                    if showQueue { QueueButton().foregroundStyle(.secondary).padding(.leading, 4) }
                     Button { open() } label: { Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.leading, 6)
                 }
-                .padding(.horizontal, 14).padding(.top, 9).padding(.bottom, 4)
-                SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }.padding(.horizontal, 16).padding(.bottom, 4)
+                .padding(.horizontal, 14).padding(.top, compact ? 7 : 9).padding(.bottom, compact ? 7 : 4)
+                if !compact { SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }.padding(.horizontal, 16).padding(.bottom, 4) }
             }
-            .frame(maxWidth: 720)
-            .glass(26, tint: player.accent)
-            .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .frame(maxWidth: compact ? 560 : 720)
+            .glass(CGFloat(barRadius), tint: glassTint > 0.01 ? player.accent.opacity(glassTint) : nil)
+            .contentShape(RoundedRectangle(cornerRadius: CGFloat(barRadius), style: .continuous))
             .onTapGesture(perform: open)
             .padding(.horizontal, 18).padding(.bottom, 14)
             .frame(maxWidth: .infinity)

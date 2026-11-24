@@ -41,6 +41,9 @@ final class Player: ObservableObject {
 
     var duration: Double { current?.duration ?? 0 }
 
+    /// the accent setting changed
+    func refreshAccent() { accent = Look.accent(for: current) }
+
     private init() {
         timeObserver = avp.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] t in
             let s = t.seconds
@@ -195,7 +198,7 @@ final class Player: ObservableObject {
         let s = queue[i]
         current = s; counted = false
         UserDefaults.standard.set(s.id, forKey: "lastSong")
-        accent = Covers.accent(s)
+        accent = Look.accent(for: s)
         clock.position = 0
         pushNowPlaying(); pushDiscord()
         refreshPreload()
@@ -205,7 +208,7 @@ final class Player: ObservableObject {
         if let o = endObserver { NotificationCenter.default.removeObserver(o); endObserver = nil }
         current = s; counted = false
         UserDefaults.standard.set(s.id, forKey: "lastSong")
-        accent = Covers.accent(s)
+        accent = Look.accent(for: s)
         clock.position = 0
         isPlaying = autoplay
         pushNowPlaying(); pushDiscord()

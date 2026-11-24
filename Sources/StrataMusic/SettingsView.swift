@@ -6,6 +6,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
+            LookSettings().tabItem { Label("Look", systemImage: "paintpalette") }
             PlaybackSettings().tabItem { Label("Playback", systemImage: "speaker.wave.2") }
             DownloadSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
             DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
@@ -17,7 +18,6 @@ struct SettingsView: View {
 
 struct GeneralSettings: View {
     @EnvironmentObject var lib: Library
-    @AppStorage("leaves") private var leaves = true
     @AppStorage("liveYt") private var liveYt = true
     @AppStorage("homeReleases") private var homeReleases = true
     @AppStorage("menuBar") private var menuBar = true
@@ -51,7 +51,6 @@ struct GeneralSettings: View {
                 Text("The music folders are watched: songs you add or remove show up by themselves.").font(.callout).foregroundStyle(.secondary)
             }
             Section("Player") {
-                Toggle("Falling leaves (The Thanksgiving Update)", isOn: $leaves)
                 Toggle("Show YouTube results while I type in search", isOn: $liveYt)
                 Toggle("Look for new releases from my artists (weekly)", isOn: $homeReleases)
                 Toggle("Show the player in the menu bar", isOn: $menuBar)

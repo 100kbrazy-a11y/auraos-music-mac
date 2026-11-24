@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.8.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "A new Look tab in Settings: accent colour from the cover or one you pick, and a player background of aurora, blurred cover, moving gradient or plain",
+    "Glass: how much colour the media bar has and how round its corners are",
+    "Player: which page it opens on, cover size, shape (rounded, square, circle) and shadow, and which buttons show",
+    "Media bar: a compact version, and the like and Up Next buttons can be hidden; cover size in lists",
+    "Seasons: Autumn leaves, Winter snow, Spring petals, Off, or Automatic by date. Always behind the text"
+   ]
+  },
+  {
    "version": "1.7.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

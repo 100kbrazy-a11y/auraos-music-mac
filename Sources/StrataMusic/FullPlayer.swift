@@ -5,7 +5,7 @@ import AppKit
 struct FullPlayerView: View {
     @EnvironmentObject var player: Player
     var close: () -> Void
-    @State private var page = 1
+    @State private var page = UserDefaults.standard.object(forKey: "playerStart") as? Int ?? 1
     @State private var hoverClose = false
 
     var body: some View {
@@ -88,14 +88,17 @@ struct TabPill: View {
 struct SongPage: View {
     @EnvironmentObject var player: Player
     @EnvironmentObject var lib: Library
+    @AppStorage("playerCover") private var coverScale = 1.0
+    @AppStorage("coverShape") private var coverShape = "rounded"
+    @AppStorage("coverShadow") private var coverShadow = true
 
     var body: some View {
         if let s = player.current {
             GeometryReader { g in
                 let side = max(220, min(g.size.height - 30, g.size.width * 0.42, 560))
                 HStack(spacing: 60) {
-                    CoverView(song: s, size: side, radius: 24)
-                        .shadow(color: .black.opacity(0.5), radius: 40, y: 22)
+                    CoverView(song: s, size: side * CGFloat(coverScale), radius: coverShape == "circle" ? side * CGFloat(coverScale) / 2 : (coverShape == "square" ? 4 : 24))
+                        .shadow(color: .black.opacity(coverShadow ? 0.5 : 0), radius: 40, y: 22)
                         .scaleEffect(player.isPlaying ? 1 : 0.93)
                         .animation(.spring(response: 0.5, dampingFraction: 0.75), value: player.isPlaying)
                     VStack(alignment: .leading, spacing: 18) {
@@ -134,20 +137,25 @@ struct SongPage: View {
 
 struct ExtraControls: View {
     @EnvironmentObject var player: Player
+    @AppStorage("pbSpeed") private var pbSpeed = true
+    @AppStorage("pbRoute") private var pbRoute = true
+    @AppStorage("pbSleep") private var pbSleep = true
+    @AppStorage("pbQueue") private var pbQueue = true
+    @AppStorage("pbExport") private var pbExport = true
     @State private var exporting: Song?
     var body: some View {
         HStack(spacing: 22) {
             Button { player.shuffle.toggle() } label: { Image(systemName: "shuffle").foregroundStyle(player.shuffle ? player.accent : Color.white.opacity(0.7)) }
             Button { player.cycleRepeat() } label: { Image(systemName: player.repeatMode == 2 ? "repeat.1" : "repeat").foregroundStyle(player.repeatMode > 0 ? player.accent : Color.white.opacity(0.7)) }
             Spacer()
-            SpeedButton().foregroundStyle(.white.opacity(0.7))
-            RoutePicker().frame(width: 24, height: 24)
-            SleepButton().foregroundStyle(.white.opacity(0.7))
-            QueueButton(scope: .player).foregroundStyle(.white.opacity(0.7))
+            if pbSpeed { SpeedButton().foregroundStyle(.white.opacity(0.7)) }
+            if pbRoute { RoutePicker().frame(width: 24, height: 24) }
+            if pbSleep { SleepButton().foregroundStyle(.white.opacity(0.7)) }
+            if pbQueue { QueueButton(scope: .player).foregroundStyle(.white.opacity(0.7)) }
             Image(systemName: "speaker.fill").foregroundStyle(.white.opacity(0.6))
             Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 110).tint(.white)
             Image(systemName: "speaker.wave.3.fill").foregroundStyle(.white.opacity(0.6))
-            Button { exporting = player.current } label: { Image(systemName: "square.and.arrow.up").foregroundStyle(.white.opacity(0.7)) }.help("Export this song")
+            if pbExport { Button { exporting = player.current } label: { Image(systemName: "square.and.arrow.up").foregroundStyle(.white.opacity(0.7)) }.help("Export this song") }
         }
         .font(.system(size: 15))
         .buttonStyle(.plain)
