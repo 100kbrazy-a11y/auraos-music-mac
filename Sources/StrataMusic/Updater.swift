@@ -26,8 +26,8 @@ final class Updater: ObservableObject {
 
     static var current: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0" }
 
-    private static func parts(_ v: String) -> [Int] { v.split(separator: ".").map { Int($0.prefix(while: { $0.isNumber })) ?? 0 } }
-    private static func newer(_ a: String, than b: String) -> Bool {
+    static func parts(_ v: String) -> [Int] { v.split(separator: ".").map { Int($0.prefix(while: { $0.isNumber })) ?? 0 } }
+    static func newer(_ a: String, than b: String) -> Bool {
         let x = parts(a), y = parts(b)
         for i in 0..<max(x.count, y.count) { let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0; if p != q { return p > q } }
         return false

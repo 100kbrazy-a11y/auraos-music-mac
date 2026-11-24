@@ -10,6 +10,7 @@ struct SettingsView: View {
             PlaybackSettings().tabItem { Label("Playback", systemImage: "speaker.wave.2") }
             DownloadSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
             DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
+            AdvancedSettings().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
         .modifier(SettingsFrame(embedded: embedded))

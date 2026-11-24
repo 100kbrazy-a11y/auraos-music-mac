@@ -217,6 +217,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var songWatcher: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let crashed = CrashGuard.begin()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in CrashGuard.end() }
+        if crashed { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Diagnostics.askAfterCrash() } }
         songWatcher = Player.shared.$current.dropFirst().removeDuplicates { $0?.id == $1?.id }.sink { song in
             Task { @MainActor in Notifier.songChanged(song) }
         }

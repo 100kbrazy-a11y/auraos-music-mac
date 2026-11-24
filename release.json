@@ -2,6 +2,17 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.9.0",
+   "name": "The Macster Update",
+   "date": "2026-11-24",
+   "notes": [
+    "Test YouTube (Settings > Advanced): checks opening the page, searching, finding the audio and downloading a few bytes, and says which step fails",
+    "The YouTube page resets itself after three failures in a row, for search as well as downloads, and there's an engine log you can copy",
+    "If Strata Music didn't close properly last time, it offers to save a diagnostics file with the log and the newest crash report",
+    "Unit tests for lyrics parsing, version order, seasons and more now run on every build"
+   ]
+  },
+  {
    "version": "1.8.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

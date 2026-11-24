@@ -5,6 +5,7 @@ let package = Package(
     name: "StrataMusic",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "StrataMusic", path: "Sources/StrataMusic")
+        .executableTarget(name: "StrataMusic", path: "Sources/StrataMusic"),
+        .testTarget(name: "StrataMusicTests", dependencies: ["StrataMusic"], path: "Tests/StrataMusicTests")
     ]
 )

@@ -41,6 +41,7 @@ final class YtEngine: NSObject, WKScriptMessageHandler {
     private var seq = 1
     private var epoch = 0
     private var users = 0
+    private var failStreak = 0
     private var closer: Task<Void, Never>?
     private let net: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -64,8 +65,20 @@ final class YtEngine: NSObject, WKScriptMessageHandler {
                 }
             }
         }
-        do { try await open(); return try await block() }
-        catch { if users <= 1 { tearDown("The YouTube page stopped") }; throw error }
+        do {
+            try await open()
+            let r = try await block()
+            failStreak = 0
+            return r
+        } catch {
+            if error is CancellationError { throw error }
+            EngineLog.shared.add("Failed: " + ((error as? YtError)?.errorDescription ?? error.localizedDescription))
+            failStreak += 1
+            // three failures in a row: start over with a fresh page, even if other jobs are using this one
+            if failStreak >= 3 { failStreak = 0; tearDown("Three failures in a row, starting over") }
+            else if users <= 1 { tearDown("The YouTube page stopped") }
+            throw error
+        }
     }
 
     /// throw the hidden browser away; the next job makes a fresh one
@@ -105,6 +118,7 @@ final class YtEngine: NSObject, WKScriptMessageHandler {
     }
 
     private func tearDown(_ why: String) {
+        EngineLog.shared.add("Closed the YouTube page: \(why)")
         let pending = calls; calls = [:]
         for (_, c) in pending { c.resume(throwing: YtError(why)) }
         let waiters = readyWaiters; readyWaiters = []
@@ -162,9 +176,7 @@ final class YtEngine: NSObject, WKScriptMessageHandler {
         case "fail":
             if let id = (m["id"] as? NSNumber)?.intValue, let c = calls.removeValue(forKey: id) { c.resume(throwing: YtError((m["m"] as? String) ?? "YouTube didn't answer")) }
         case "log":
-            #if DEBUG
-            print("[engine]", m["m"] as? String ?? "")
-            #endif
+            EngineLog.shared.add("[page] " + (m["m"] as? String ?? ""))
         case "fetch":
             guard let id = (m["id"] as? NSNumber)?.intValue, let u = m["u"] as? String, let url = URL(string: u) else { return }
             let method = (m["m"] as? String) ?? "GET"
