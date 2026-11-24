@@ -2,6 +2,19 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "1.2.0",
+   "name": "The Macster Update",
+   "date": "2026-11-23",
+   "notes": [
+    "Download everything by an artist: on a YouTube artist page or the artist's search result. It reads all their releases, tells you how many songs it found (leaving out what you already have) and asks before downloading",
+    "Settings now opens inside the window (sidebar > Settings) and the sidebar button works",
+    "The leaves fall behind the text and buttons, and still carry on smoothly when the player opens",
+    "Esc closes the full-screen player; the close button is bigger and no longer fights the title bar; drag the top of the player down to close it",
+    "The media bar fades out and slides up as the player opens, and back when it closes",
+    "Polish: no extra pill on the search box, hover play buttons on albums, dancing bars on the playing song, a heart in the media bar, the window and last song are remembered"
+   ]
+  },
+  {
    "version": "1.1.0",
    "name": "The Thanksgiving Update",
    "date": "2026-11-23",

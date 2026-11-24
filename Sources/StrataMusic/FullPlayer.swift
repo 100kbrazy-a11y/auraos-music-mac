@@ -6,6 +6,7 @@ struct FullPlayerView: View {
     @EnvironmentObject var player: Player
     var close: () -> Void
     @State private var page = 1
+    @State private var hoverClose = false
 
     var body: some View {
         ZStack {
@@ -18,20 +19,28 @@ struct FullPlayerView: View {
             }
             .id(page)
             .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            .padding(.top, 64).padding(.bottom, 92)
+            .padding(.top, 96).padding(.bottom, 92)
 
             VStack {
                 HStack {
                     Button { close() } label: {
-                        Image(systemName: "chevron.down").font(.system(size: 15, weight: .bold)).frame(width: 40, height: 40).glass(20, interactive: true)
+                        Image(systemName: "chevron.down").font(.system(size: 16, weight: .bold)).frame(width: 46, height: 46)
+                            .glass(23, interactive: true).contentShape(Circle())
+                            .scaleEffect(hoverClose ? 1.08 : 1)
                     }
-                    .buttonStyle(.plain).help("Close the player")
+                    .buttonStyle(.plain).help("Close the player (Esc)")
+                    .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hoverClose = h } }
                     Spacer()
                 }
-                .padding(.leading, 86).padding(.trailing, 22).padding(.top, 10)    // right of the window's traffic lights
+                // below the window's title-bar strip (that strip drags the window and swallows clicks) and clear of the traffic lights
+                .padding(.leading, 20).padding(.trailing, 22).padding(.top, 40)
                 Spacer()
                 TabPill(page: $page)
             }
+            // drag the top of the player down to close it
+            VStack { Color.clear.frame(height: 36).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { if $0.translation.height > 100 { close() } }); Spacer() }
+            // Esc closes the player
+            Button("Close", action: close).keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
         .onExitCommand(perform: close)
         .onReceive(NotificationCenter.default.publisher(for: .playerPage)) { n in

@@ -31,6 +31,8 @@ private struct SeededGenerator: RandomNumberGenerator {
 
 /// the Thanksgiving update's falling brown, yellow and red leaves
 struct FallingLeaves: View {
+    /// the size of the whole window; both copies of the leaves (behind the library, behind the player) use it so they match exactly
+    var area: CGSize? = nil
     private struct Leaf { var x: Double; var speed: Double; var size: Double; var phase: Double; var sway: Double; var rot: Double; var spin: Double; var color: Color }
 
     private static let leaves: [Leaf] = {
@@ -58,7 +60,8 @@ struct FallingLeaves: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            Canvas { ctx, size in
+            Canvas { ctx, canvasSize in
+                let size = area ?? canvasSize
                 let t = tl.date.timeIntervalSinceReferenceDate
                 for l in Self.leaves {
                     let travel = Double(size.height) + 120
@@ -76,5 +79,39 @@ struct FallingLeaves: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// the library's copy of the leaves: the same picture as the player's, cut out at the place where this page sits in the window
+struct DetailLeaves: View {
+    var window: CGRect
+    var body: some View {
+        GeometryReader { g in
+            let f = g.frame(in: .global)
+            FallingLeaves(area: window.size)
+                .frame(width: window.width, height: window.height, alignment: .topLeading)
+                .offset(x: window.minX - f.minX, y: window.minY - f.minY)
+                .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+                .clipped()
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// little bars that dance next to the song that is playing
+struct EqBars: View {
+    var playing: Bool
+    var color: Color
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !playing)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<3, id: \.self) { i in
+                    let h = playing ? 0.35 + 0.65 * abs(sin(t * (3.1 + Double(i) * 1.3) + Double(i))) : 0.3
+                    RoundedRectangle(cornerRadius: 1).fill(color).frame(width: 3, height: 12 * h)
+                }
+            }
+            .frame(width: 13, height: 12, alignment: .bottom)
+        }
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
+    var embedded = false
     var body: some View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
@@ -9,7 +10,7 @@ struct SettingsView: View {
             DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 540, height: 430)
+        .modifier(SettingsFrame(embedded: embedded))
     }
 }
 
@@ -42,7 +43,7 @@ struct GeneralSettings: View {
                 Text("Opus, Ogg and WebM files (from Android music packs) are skipped for now. Export them as M4A or FLAC on the phone, or wait for the next update.").font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollContentBackground(.hidden)
     }
 }
 
@@ -67,10 +68,10 @@ struct DownloadSettings: View {
             }
             Section("Now") {
                 LabeledContent("Downloading", value: "\(Downloads.shared.active)")
-                Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true); NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil) }
+                Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true) }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollContentBackground(.hidden)
     }
 
     private func choose() {
@@ -97,7 +98,7 @@ struct DiscordSettings: View {
                 Text("This talks to the Discord app on this Mac, the same way its own Rich Presence does: no sign-in, no token. Keep Discord open, and turn on Settings › Activity Privacy › Share my activity in Discord.")
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollContentBackground(.hidden)
         .onChange(of: on) { _ in Player.shared.refreshDiscord() }
         .onChange(of: cover) { _ in Player.shared.refreshDiscord() }
         .onChange(of: hidePaused) { _ in Player.shared.refreshDiscord() }
@@ -125,6 +126,14 @@ struct UpdateSettings: View {
                 Section("What's new in \(r.version)") { Text(b).font(.callout).textSelection(.enabled) }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollContentBackground(.hidden)
+    }
+}
+
+private struct SettingsFrame: ViewModifier {
+    var embedded: Bool
+    func body(content: Content) -> some View {
+        if embedded { content.frame(maxWidth: 680, maxHeight: .infinity).padding(.top, 6).frame(maxWidth: .infinity) }
+        else { content.frame(width: 540, height: 430) }
     }
 }

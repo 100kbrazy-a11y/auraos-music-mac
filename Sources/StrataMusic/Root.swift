@@ -3,7 +3,7 @@ import AppKit
 
 enum Nav: Hashable {
     case songs, recent, albums, artists, favorites
-    case youtube, downloads
+    case youtube, downloads, settings
     case playlist(String)
 }
 
@@ -19,6 +19,12 @@ struct RootView: View {
     @State private var search = ""
     @State private var dropping = false
     @FocusState private var searchFocus: Bool
+    @State private var windowFrame = CGRect(x: 0, y: 0, width: 1200, height: 800)
+    @State private var escMonitor: Any?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var grab = ArtistGrab.shared
+
+    private var showLeaves: Bool { leaves && !reduceMotion }
 
     var body: some View {
         ZStack {
@@ -27,8 +33,13 @@ struct RootView: View {
                     .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
             } detail: {
                 DetailRoot(nav: nav ?? .songs, search: search, path: $path)
+                    .background { if showLeaves { DetailLeaves(window: windowFrame) } }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if player.current != nil { NowPlayingBar(open: openPlayer) }
+                        if player.current != nil {
+                            NowPlayingBar(open: openPlayer)
+                                .opacity(showPlayer ? 0 : 1).offset(y: showPlayer ? -90 : 0).scaleEffect(showPlayer ? 0.96 : 1, anchor: .top)
+                                .allowsHitTesting(!showPlayer)
+                        }
                     }
                     .overlay(alignment: .top) {
                         if !lib.status.isEmpty {
@@ -55,12 +66,15 @@ struct RootView: View {
                     .transition(.move(edge: .top).combined(with: .opacity)).zIndex(2)
             }
 
+            // the player's backdrop only fades in (it never slides), and its leaves sit exactly where the library's leaves are,
+            // so opening the player doesn't restart or speed them up
             if showPlayer {
-                AuroraBackground(color: player.accent).ignoresSafeArea()
-                    .transition(.opacity).zIndex(3)
+                ZStack {
+                    AuroraBackground(color: player.accent)
+                    if showLeaves { FallingLeaves(area: windowFrame.size) }
+                }
+                .ignoresSafeArea().transition(.opacity).zIndex(3)
             }
-            // one set of leaves for the whole window: opening the player doesn't restart them, it just puts the player in front
-            if leaves { FallingLeaves().ignoresSafeArea().zIndex(4) }
             if showPlayer {
                 FullPlayerView(close: closePlayer)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -71,12 +85,35 @@ struct RootView: View {
         .dropDestination(for: URL.self) { urls, _ in lib.importURLs(urls, remember: true); return true } isTargeted: { dropping = $0 }
         .overlay { if dropping { RoundedRectangle(cornerRadius: 14).strokeBorder(player.accent, lineWidth: 3).padding(6).allowsHitTesting(false) } }
         .background(Color(red: 0.07, green: 0.07, blue: 0.08))
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { windowFrame = g.frame(in: .global) }
+                .onChange(of: g.size) { _ in windowFrame = g.frame(in: .global) }
+        }.ignoresSafeArea())
         .background(WindowAccessor { w in
+            _ = w.setFrameAutosaveName("StrataMainWindow")
             w.titleVisibility = showPlayer ? .hidden : .visible
             w.titlebarAppearsTransparent = showPlayer
         })
         .overlay { UpdatePrompt() }
-        .onAppear { Downloads.shared.lib = lib }
+        .overlay { ArtistGrabPrompt() }
+        .onAppear { Downloads.shared.lib = lib; player.restoreLast(lib) }
+        .onChange(of: showPlayer) { on in
+            if on {
+                // Esc closes the player (unless a menu, popover or sheet is open and wants the key first)
+                escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { ev in
+                    guard ev.keyCode == 53, let kw = NSApp.keyWindow, kw.attachedSheet == nil, !kw.className.contains("Popover"), !(kw is NSPanel) else { return ev }
+                    closePlayer(); return nil
+                }
+            } else if let m = escMonitor { NSEvent.removeMonitor(m); escMonitor = nil }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ytSearch)) { n in
+            if let a = n.object as? [String], a.count == 2 {
+                YouTube.shared.query = a[0]; YouTube.shared.type = a[1]; nav = .youtube; path = NavigationPath()
+                Task { await YouTube.shared.run() }
+            }
+            if showPlayer { closePlayer() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in if !showPlayer { searchFocus = true } }
         .onReceive(NotificationCenter.default.publisher(for: .showDownloads)) { _ in nav = .downloads; path = NavigationPath() }
@@ -106,6 +143,7 @@ extension Notification.Name {
     static let focusSearch = Notification.Name("strata.focusSearch")
     static let goRef = Notification.Name("strata.goRef")
     static let showDownloads = Notification.Name("strata.showDownloads")
+    static let ytSearch = Notification.Name("strata.ytSearch")
 }
 
 // MARK: - the search box and its drop-down
@@ -123,8 +161,10 @@ struct SearchField: View {
             if !text.isEmpty { Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .frame(width: 240)
-        .background(Capsule().fill(Color.white.opacity(focus.wrappedValue ? 0.14 : 0.08)))
+        .frame(width: focus.wrappedValue ? 320 : 240)
+        .animation(.easeOut(duration: 0.18), value: focus.wrappedValue)
+        // macOS 26's toolbar already draws its own glass pill around this; older versions get ours
+        .background { if #available(macOS 26.0, *) { EmptyView() } else { Capsule().fill(Color.white.opacity(focus.wrappedValue ? 0.14 : 0.08)) } }
     }
 }
 
@@ -253,8 +293,8 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                Button { openSettingsWindow() } label: { Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                Button { nav = .settings } label: { Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading) }
+                    .buttonStyle(.plain).foregroundStyle(nav == .settings ? Color.primary : Color.secondary)
             }
             .padding(10)
         }
@@ -285,6 +325,7 @@ struct DetailRoot: View {
                 case .favorites: SongTable(songs: lib.favoriteSongs, search: search)
                 case .youtube: YouTubeView()
                 case .downloads: DownloadsView()
+                case .settings: SettingsView(embedded: true)
                 case .playlist(let id):
                     if let p = lib.playlists.first(where: { $0.id == id }) { SongTable(songs: lib.songs(in: p), search: search) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
                 }
@@ -307,6 +348,7 @@ struct DetailRoot: View {
         case .favorites: return "Favorites"
         case .youtube: return "Search & Download"
         case .downloads: return "Downloads"
+        case .settings: return "Settings"
         case .playlist(let id): return lib.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
         }
     }
@@ -366,6 +408,7 @@ struct TimeLabels: View {
 
 struct NowPlayingBar: View {
     @EnvironmentObject var player: Player
+    @EnvironmentObject var lib: Library
     var open: () -> Void
 
     var body: some View {
@@ -376,8 +419,11 @@ struct NowPlayingBar: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                         Text(s.shownArtist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            .onTapGesture { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: s.artistKey)) }
                     }
                     Spacer(minLength: 12)
+                    Button { lib.toggleFav(s) } label: { Image(systemName: lib.isFav(s) ? "heart.fill" : "heart").foregroundStyle(lib.isFav(s) ? player.accent : Color.secondary) }
+                        .buttonStyle(.plain).help("Favorite")
                     TransportButtons()
                     QueueButton().foregroundStyle(.secondary).padding(.leading, 4)
                     Button { open() } label: { Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.leading, 6)

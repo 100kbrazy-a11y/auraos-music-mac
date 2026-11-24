@@ -170,8 +170,12 @@ struct YouTubeView: View {
                 HStack(spacing: 12) {
                     YtThumb(url: r.thumb, size: 48, radius: 24)
                     VStack(alignment: .leading, spacing: 2) { Text(r.title).font(.system(size: 14, weight: .semibold)); Text(r.sub).font(.system(size: 11.5)).foregroundStyle(.secondary) }
+                    Spacer()
+                    Button { ArtistGrab.shared.start(id: r.id, name: r.title) } label: { Image(systemName: "arrow.down.circle").font(.system(size: 17)) }
+                        .buttonStyle(.plain).help("Download everything by \(r.title)")
                 }.padding(.vertical, 3)
             }
+            .grabMenu(r.id, r.title)
         default:
             NavigationLink(value: YtCollection(kind: r.kind, id: r.id, title: r.title, artist: r.artist)) {
                 HStack(spacing: 12) {
@@ -244,7 +248,11 @@ struct YtArtistView: View {
                     YtThumb(url: page?.thumb ?? "", size: 110, radius: 55)
                     VStack(alignment: .leading, spacing: 8) {
                         Text(page?.name.isEmpty == false ? page!.name : a.name).font(.system(size: 28, weight: .bold))
-                        if let p = page, !p.top.isEmpty { Button { dl.add(p.top) } label: { Label("Download top songs", systemImage: "arrow.down.circle.fill") }.buttonStyle(.borderedProminent) }
+                        HStack {
+                            Button { ArtistGrab.shared.start(id: a.id, name: page?.name ?? a.name) } label: { Label("Download everything", systemImage: "arrow.down.circle.fill") }
+                                .buttonStyle(.borderedProminent).disabled(ArtistGrab.shared.busy)
+                            if let p = page, !p.top.isEmpty { Button { dl.add(p.top) } label: { Label("Top songs", systemImage: "star") }.buttonStyle(.bordered) }
+                        }
                     }
                     Spacer()
                 }
@@ -329,5 +337,108 @@ struct DownloadsView: View {
         var s = String(format: "%.1f of %.1f MB", mb, total)
         if it.speed > 0 { s += String(format: " · %.1f MB/s", it.speed / 1_000_000) }
         return s
+    }
+}
+
+// MARK: - "download everything" for an artist
+
+@MainActor
+final class ArtistGrab: ObservableObject {
+    static let shared = ArtistGrab()
+    struct Pending: Identifiable {
+        let id = UUID(); var name: String
+        var everything: [Track]; var albumsOnly: [Track]; var releases: Int
+    }
+    @Published private(set) var status = ""          // "Reading release 3 of 14…" while it works
+    @Published var pending: Pending?
+    @Published var error = ""
+    private var task: Task<Void, Never>?
+
+    var busy: Bool { !status.isEmpty }
+
+    private func key(_ title: String, _ artist: String) -> String { title.lowercased() + "|" + primaryArtist(artist).lowercased() }
+
+    func start(id: String, name: String) {
+        guard !busy else { return }
+        error = ""; status = "Reading \(name)…"
+        task = Task {
+            defer { status = "" }
+            do {
+                let page = try await YtEngine.shared.artist(id)
+                var seen = Set<String>(); var all: [Track] = []; var albums: [Track] = []
+                for (i, al) in page.albums.enumerated() {
+                    try Task.checkCancellation()
+                    status = "Reading release \(i + 1) of \(page.albums.count)…"
+                    guard let r = try? await YtEngine.shared.tracks(kind: "album", id: al.id, artist: page.name) else { continue }
+                    for t in r.tracks where seen.insert(t.id).inserted { all.append(t); if al.sub.hasPrefix("Album") { albums.append(t) } }
+                }
+                for t in page.top where seen.insert(t.id).inserted { all.append(t) }
+                // leave out what's already in the library
+                let lib = Downloads.shared.lib
+                let haveIDs = Set(lib?.songs.compactMap { $0.yt } ?? [])
+                let haveKeys = Set(lib?.songs.map { key($0.title, $0.artist) } ?? [])
+                func fresh(_ l: [Track]) -> [Track] { l.filter { !haveIDs.contains($0.id) && !haveKeys.contains(key($0.title, $0.artist)) } }
+                let e = fresh(all)
+                if e.isEmpty { error = all.isEmpty ? "YouTube Music has no songs listed for \(page.name)." : "Everything by \(page.name) that YouTube lists is already in your library." }
+                else { pending = Pending(name: page.name.isEmpty ? name : page.name, everything: e, albumsOnly: fresh(albums), releases: page.albums.count) }
+            } catch is CancellationError {
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func cancel() { task?.cancel() }
+}
+
+struct ArtistGrabPrompt: View {
+    @ObservedObject var grab = ArtistGrab.shared
+    @State private var albumsOnly = false
+
+    var body: some View {
+        ZStack {
+            if let p = grab.pending {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { grab.pending = nil }.transition(.opacity)
+                VStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.arrow.down").font(.system(size: 38)).foregroundStyle(.secondary)
+                    let n = albumsOnly ? p.albumsOnly.count : p.everything.count
+                    Text("Download \(n) songs?").font(.system(size: 19, weight: .bold))
+                    Text("\(p.name) has \(p.releases) releases on YouTube Music. Songs you already have are left out.").font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Toggle("Albums only (no singles)", isOn: $albumsOnly).toggleStyle(.checkbox)
+                    HStack(spacing: 10) {
+                        Button("Not now") { grab.pending = nil }.buttonStyle(.bordered)
+                        Button("Download all") { Downloads.shared.add(albumsOnly ? p.albumsOnly : p.everything); grab.pending = nil }
+                            .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(n == 0)
+                    }.controlSize(.large).padding(.top, 4)
+                }
+                .padding(24).frame(width: 340).glass(26).shadow(color: .black.opacity(0.35), radius: 30, y: 12)
+                .transition(.scale(scale: 0.94).combined(with: .opacity))
+            } else if !grab.error.isEmpty {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { grab.error = "" }.transition(.opacity)
+                VStack(spacing: 12) {
+                    Text(grab.error).font(.system(size: 13)).multilineTextAlignment(.center)
+                    Button("OK") { grab.error = "" }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                }
+                .padding(24).frame(width: 320).glass(26)
+            }
+            if grab.busy {
+                VStack {
+                    HStack(spacing: 10) {
+                        ProgressView().controlSize(.small)
+                        Text(grab.status).font(.system(size: 12, weight: .medium))
+                        Button("Cancel") { grab.cancel() }.buttonStyle(.plain).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8).glass(16).padding(.top, 10)
+                    Spacer()
+                }.transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: grab.pending?.id)
+        .animation(.easeOut(duration: 0.2), value: grab.busy)
+    }
+}
+
+extension View {
+    /// "Download everything" for a YouTube artist
+    func grabMenu(_ id: String, _ name: String) -> some View {
+        contextMenu { Button("Download Everything by \(name)") { ArtistGrab.shared.start(id: id, name: name) } }
     }
 }

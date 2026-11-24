@@ -33,6 +33,7 @@ struct SongTable: View {
                 HStack(spacing: 10) {
                     CoverView(song: s, size: 34, radius: 6)
                     Text(s.title).lineLimit(1).foregroundStyle(player.current?.id == s.id ? player.accent : Color.primary)
+                    if player.current?.id == s.id { EqBars(playing: player.isPlaying, color: player.accent) }
                     if lib.isFav(s) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(player.accent) }
                 }
             }
@@ -64,6 +65,7 @@ struct SongTable: View {
         } primaryAction: { ids in
             if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
         }
+        .scrollContentBackground(.hidden)
         .sheet(item: $exporting) { ExportSheet(song: $0) }
         .overlay { if songs.isEmpty { EmptyLibrary() } }
     }
@@ -88,18 +90,39 @@ struct AlbumGrid: View {
     var size: CGFloat = 168
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: size, maximum: size + 40), spacing: 22, alignment: .top)], alignment: .leading, spacing: 26) {
-            ForEach(albums) { a in
-                NavigationLink(value: AlbumRef(key: a.id)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        CoverView(song: a.cover, size: size, radius: 10).shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                        Text(a.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text(a.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    .frame(width: size, alignment: .leading)
+            ForEach(albums) { a in AlbumCard(a: a, size: size) }
+        }
+    }
+}
+
+/// an album's cover and name; hover it for a play button, like Apple Music
+struct AlbumCard: View {
+    let a: AlbumInfo
+    let size: CGFloat
+    @EnvironmentObject var player: Player
+    @State private var hover = false
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            NavigationLink(value: AlbumRef(key: a.id)) {
+                VStack(alignment: .leading, spacing: 6) {
+                    CoverView(song: a.cover, size: size, radius: 10)
+                        .shadow(color: .black.opacity(hover ? 0.5 : 0.3), radius: hover ? 14 : 8, y: hover ? 8 : 4)
+                        .scaleEffect(hover ? 1.025 : 1)
+                    Text(a.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(a.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .buttonStyle(.plain)
+                .frame(width: size, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            if hover, let f = a.songs.first {
+                Button { player.play(f, in: a.songs) } label: {
+                    Image(systemName: "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 38, height: 38).background(Circle().fill(.black.opacity(0.55))).overlay(Circle().strokeBorder(.white.opacity(0.25)))
+                }
+                .buttonStyle(.plain).padding(10).offset(y: size - 58 + 0).transition(.scale.combined(with: .opacity))
             }
         }
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
     }
 }
 
@@ -224,6 +247,7 @@ struct ArtistDetail: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(a.id).font(.system(size: 32, weight: .bold))
                             PlayButtons(songs: a.songs)
+                            Button { NotificationCenter.default.post(name: .ytSearch, object: [a.id, "artist"]) } label: { Label("Get more from YouTube Music", systemImage: "arrow.down.circle") }.buttonStyle(.bordered)
                         }
                         Spacer()
                     }

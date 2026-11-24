@@ -40,9 +40,19 @@ final class Player: ObservableObject {
             Task { @MainActor in
                 guard let self = self, s.isFinite else { return }
                 self.clock.position = s
+                if Int(s) % 5 == 0 { UserDefaults.standard.set(s, forKey: "lastPosition") }
             }
         }
         setupRemote()
+    }
+
+    /// at launch: the song that was playing last time, paused where it stopped
+    func restoreLast(_ lib: Library) {
+        guard current == nil, let id = UserDefaults.standard.string(forKey: "lastSong"), let s = lib.byID[id] else { return }
+        baseQueue = [s]; queue = [s]; index = 0
+        load(s, autoplay: false)
+        let pos = UserDefaults.standard.double(forKey: "lastPosition")
+        if pos > 1 && pos < s.duration - 2 { seek(to: pos) }
     }
 
     // MARK: queue
@@ -121,6 +131,7 @@ final class Player: ObservableObject {
         }
         avp.replaceCurrentItem(with: item)
         current = s
+        UserDefaults.standard.set(s.id, forKey: "lastSong")
         accent = Covers.accent(s)
         clock.position = 0
         if autoplay { avp.play(); isPlaying = true } else { isPlaying = false }
