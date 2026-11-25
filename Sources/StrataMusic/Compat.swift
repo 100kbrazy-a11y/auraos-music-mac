@@ -27,6 +27,9 @@ private struct CaptureOpenWindow: ViewModifier {
 }
 
 extension View {
+    /// lets a modifier chain pick a different shape of view partway (used for things that differ by macOS version)
+    func apply<V: View>(@ViewBuilder _ f: (Self) -> V) -> V { f(self) }
+
     /// remembers SwiftUI's "open a window" action so `AppWindows.open` can use it (macOS 13 and later; nothing on macOS 12)
     @ViewBuilder func captureOpenWindow() -> some View {
         if #available(macOS 13, *) { self.modifier(CaptureOpenWindow()) } else { self }

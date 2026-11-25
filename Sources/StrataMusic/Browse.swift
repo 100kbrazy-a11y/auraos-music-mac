@@ -90,6 +90,26 @@ struct SongTable: View {
             .padding(.vertical, 3)
             .contentShape(Rectangle())
             .onDrag { dragProvider(s, list) }
+            .apply { rowActions($0, s, list) }
+        }
+    }
+
+    /// the menu for the selected songs, and double-click to play (macOS 13 and later)
+    @ViewBuilder private func withSelectionMenu<V: View>(_ v: V, _ list: [Song]) -> some View {
+        if #available(macOS 13, *) {
+            v.contextMenu(forSelectionType: String.self) { ids in menu(ids, list) } primaryAction: { ids in
+                if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
+            }
+        } else { v }
+    }
+
+    /// macOS 12 has no menu for a whole table selection, so each row carries its own menu and double-click
+    @ViewBuilder private func rowActions<V: View>(_ v: V, _ s: Song, _ list: [Song]) -> some View {
+        if #available(macOS 13, *) { v }
+        else {
+            v.contentShape(Rectangle())
+                .contextMenu { menu(selection.contains(s.id) ? selection : [s.id], list) }
+                .onTapGesture(count: 2) { player.play(s, in: list) }
         }
     }
 
@@ -99,10 +119,7 @@ struct SongTable: View {
 
     var body: some View {
         let list = sortedList.isEmpty ? Self.filtered(songs, search) : sortedList
-        content(list)
-        .contextMenu(forSelectionType: String.self) { ids in menu(ids, list) } primaryAction: { ids in
-            if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
-        }
+        withSelectionMenu(content(list), list)
         .clearScrollBackground()
         .task(id: sortKey) {
             let snapshot = songs, q = search, ord = order
@@ -125,11 +142,12 @@ struct SongTable: View {
                 }
                 .contentShape(Rectangle())
                 .onDrag { dragProvider(s, list) }
+                .apply { rowActions($0, s, list) }
             }
-            TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Plays") { s in Text((s.plays ?? 0) > 0 ? "\(s.plays!)" : "").monospacedDigit().foregroundStyle(.secondary) }.width(44)
-            TableColumn("Time", value: \.duration) { s in Text(fmtTime(s.duration)).monospacedDigit().foregroundStyle(.secondary) }.width(56)
+            TableColumn("Artist", value: \.artist) { s in Text(s.shownArtist).lineLimit(1).foregroundStyle(.secondary).apply { rowActions($0, s, list) } }
+            TableColumn("Album", value: \.album) { s in Text(s.shownAlbum).lineLimit(1).foregroundStyle(.secondary).apply { rowActions($0, s, list) } }
+            TableColumn("Plays") { s in Text((s.plays ?? 0) > 0 ? "\(s.plays!)" : "").monospacedDigit().foregroundStyle(.secondary).apply { rowActions($0, s, list) } }.width(44)
+            TableColumn("Time", value: \.duration) { s in Text(fmtTime(s.duration)).monospacedDigit().foregroundStyle(.secondary).apply { rowActions($0, s, list) } }.width(56)
         }
     }
 }

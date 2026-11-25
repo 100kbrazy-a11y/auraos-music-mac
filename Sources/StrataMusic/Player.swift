@@ -31,7 +31,7 @@ final class Player: ObservableObject {
     let vol = VolumeModel()
     var volume: Float { get { vol.value } set { vol.value = newValue; setOutVolume(newValue) } }
     /// 0.5x to 2x
-    @Published var speed: Float = 1 { didSet { clock.rate = isPlaying ? Double(speed) : 0; avp.defaultRate = speed; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
+    @Published var speed: Float = 1 { didSet { clock.rate = isPlaying ? Double(speed) : 0; if #available(macOS 13, *) { avp.defaultRate = speed }; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
     @Published private(set) var decoding = false
     /// the sleep timer: stops the music at [sleepEnd], or when the current song ends
     @Published private(set) var sleepEnd: Date?
