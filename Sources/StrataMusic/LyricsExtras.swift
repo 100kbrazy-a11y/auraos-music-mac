@@ -139,9 +139,7 @@ struct LyricShareSheet: View {
 
     @MainActor private func image() -> NSImage? {
         _ = Covers.image(song, maxPixel: 240)
-        let r = ImageRenderer(content: LyricCard(song: song, lines: chosen, accent: Covers.accent(song)).frame(width: 1080, height: 1080))
-        r.scale = 1
-        return r.nsImage
+        return renderNSImage(LyricCard(song: song, lines: chosen, accent: Covers.accent(song)), width: 1080, height: 1080)
     }
     @MainActor private func save() {
         guard let img = image(), let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return }

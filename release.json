@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.2.0",
+   "name": "The Macster Update",
+   "date": "2026-11-25",
+   "notes": [
+    "Strata Music for Mac now runs on macOS 12 (Monterey) as well as macOS 13 and later.",
+    "On macOS 12 the sidebar, the album and artist pages, the menu bar player, the mini player, the desktop lyrics and the shortcut list are built a plainer way (Monterey lacks the newer SwiftUI pieces), and the settings pages keep Monterey's own form look. Everything works the same; nothing changes on macOS 13 and later."
+   ]
+  },
+  {
    "version": "3.1.0",
    "name": "The Macster Update",
    "date": "2026-11-24",

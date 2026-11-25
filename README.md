@@ -1,7 +1,7 @@
 # Strata Music for Mac
 
 The Mac version of Strata Music: the Android app's look mixed with Apple Music's layout, in SwiftUI.
-Liquid Glass on macOS 26 and later, blurred glass on macOS 13 to 15.
+Liquid Glass on macOS 26 and later, blurred glass on macOS 12 to 15.
 
 - Songs, Albums, Artists, Favorites, Playlists; add folders or drop songs on the window
 - Full-screen player with three pages (Lyrics, Current Song, Artist) and a glass pill to switch between them

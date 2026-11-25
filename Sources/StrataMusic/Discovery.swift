@@ -334,7 +334,7 @@ struct HomeView: View {
                 if !artists.isEmpty {
                     shelf("Your artists") {
                         ForEach(artists) { a in
-                            NavigationLink(value: ArtistRef(name: a.id)) {
+                            NavLink(value: ArtistRef(name: a.id)) {
                                 VStack(spacing: 6) {
                                     CoverView(song: a.cover, size: 130, radius: 65).shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                                     Text(a.id).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).frame(width: 130)
@@ -395,7 +395,7 @@ struct HomeView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 18) {
                             ForEach(rel.items) { r in
-                                NavigationLink(value: YtCollection(kind: "album", id: r.id, title: r.title, artist: r.artist)) {
+                                NavLink(value: YtCollection(kind: "album", id: r.id, title: r.title, artist: r.artist)) {
                                     VStack(alignment: .leading, spacing: 6) {
                                         YtThumb(url: r.thumb, size: 150, radius: 10).shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                                         Text(r.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -578,7 +578,7 @@ struct ReplayView: View {
                     Text("Top artists").font(.title3.weight(.bold))
                     HStack(alignment: .top, spacing: 22) {
                         ForEach(Array(st.artists.enumerated()), id: \.offset) { _, a in
-                            NavigationLink(value: ArtistRef(name: a.0)) {
+                            NavLink(value: ArtistRef(name: a.0)) {
                                 VStack(spacing: 6) {
                                     CoverView(song: a.2, size: 110, radius: 55)
                                     Text(a.0).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).frame(width: 110)
@@ -609,9 +609,7 @@ struct ReplayView: View {
         // pictures are normally loaded a moment after a view appears; a picture taken right now needs them ready
         for e in st.songs.prefix(5) { _ = Covers.image(e.0, maxPixel: 168) }
         for a in st.artists.prefix(3) { _ = Covers.image(a.2, maxPixel: 260) }
-        let r = ImageRenderer(content: ReplayCard(period: period.rawValue, stats: st, accent: Covers.accent(st.songs.first?.0)).frame(width: 1080, height: 1350))
-        r.scale = 1
-        return r.nsImage
+        return renderNSImage(ReplayCard(period: period.rawValue, stats: st, accent: Covers.accent(st.songs.first?.0)), width: 1080, height: 1350)
     }
     @MainActor private func saveCard(_ st: ReplayStats) {
         guard let img = card(st), let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return }
@@ -634,13 +632,13 @@ struct ReplayCard: View {
         ZStack {
             LinearGradient(colors: [accent.opacity(0.95), Color(red: 0.05, green: 0.04, blue: 0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(alignment: .leading, spacing: 26) {
-                Text("STRATA REPLAY").font(.system(size: 30, weight: .heavy, design: .rounded)).tracking(5).foregroundStyle(.white.opacity(0.8))
+                Text("STRATA REPLAY").font(.system(size: 30, weight: .heavy, design: .rounded)).kerning(5).foregroundStyle(.white.opacity(0.8))
                 Text(period).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(.white)
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(stats.minutes.formatted()).font(.system(size: 120, weight: .heavy, design: .rounded)).foregroundStyle(.white)
                     Text("minutes").font(.system(size: 38, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 }
-                Text("TOP SONGS").font(.system(size: 24, weight: .bold)).tracking(4).foregroundStyle(.white.opacity(0.7)).padding(.top, 6)
+                Text("TOP SONGS").font(.system(size: 24, weight: .bold)).kerning(4).foregroundStyle(.white.opacity(0.7)).padding(.top, 6)
                 ForEach(Array(stats.songs.prefix(5).enumerated()), id: \.offset) { i, e in
                     HStack(spacing: 20) {
                         Text("\(i + 1)").font(.system(size: 40, weight: .heavy, design: .rounded)).foregroundStyle(.white.opacity(0.6)).frame(width: 50)

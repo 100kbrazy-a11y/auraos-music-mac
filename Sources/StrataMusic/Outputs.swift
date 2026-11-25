@@ -81,7 +81,7 @@ struct OutputButton: View {
         } label: {
             Image(systemName: "hifispeaker").foregroundStyle(out.activeDevice == nil ? Color.white.opacity(0.7) : Color.accentColor)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).hideMenuIndicator().fixedSize()
         .help(out.activeDevice.map { "Playing through \($0.name)" } ?? "Choose where the sound goes")
         .onAppear { out.refresh() }
     }

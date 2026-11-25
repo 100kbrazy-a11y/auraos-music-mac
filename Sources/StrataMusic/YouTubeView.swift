@@ -148,7 +148,7 @@ struct YouTubeView: View {
                         Text("Search above, or paste a link. Songs are saved into your Music folder with their title, artist and cover, and show up in your library.").foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
                     }
                 } else {
-                    List(yt.results) { r in row(r) }.scrollContentBackground(.hidden)
+                    List(yt.results) { r in row(r) }.clearScrollBackground()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -161,7 +161,7 @@ struct YouTubeView: View {
         case "song":
             TrackRow(t: Track(id: r.id, title: r.title, artist: r.artist, album: r.album, thumb: r.thumb))
         case "artist":
-            NavigationLink(value: YtArtistRef(id: r.id, name: r.title)) {
+            NavLink(value: YtArtistRef(id: r.id, name: r.title)) {
                 HStack(spacing: 12) {
                     YtThumb(url: r.thumb, size: 48, radius: 24)
                     VStack(alignment: .leading, spacing: 2) { Text(r.title).font(.system(size: 14, weight: .semibold)); Text(r.sub).font(.system(size: 11.5)).foregroundStyle(.secondary) }
@@ -172,7 +172,7 @@ struct YouTubeView: View {
             }
             .grabMenu(r.id, r.title)
         default:
-            NavigationLink(value: YtCollection(kind: r.kind, id: r.id, title: r.title, artist: r.artist)) {
+            NavLink(value: YtCollection(kind: r.kind, id: r.id, title: r.title, artist: r.artist)) {
                 HStack(spacing: 12) {
                     YtThumb(url: r.thumb, size: 48, radius: 8)
                     VStack(alignment: .leading, spacing: 2) { Text(r.title).font(.system(size: 13.5, weight: .medium)).lineLimit(1); Text(r.sub).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1) }
@@ -211,7 +211,7 @@ struct YtCollectionView: View {
             }
             .padding(24)
             if !error.isEmpty { Text(error).foregroundStyle(.orange).padding(.horizontal, 24) }
-            List(tracks) { t in TrackRow(t: t) }.scrollContentBackground(.hidden)
+            List(tracks) { t in TrackRow(t: t) }.clearScrollBackground()
                 .overlay { if loading { ProgressView().controlSize(.large) } }
         }
         .navigationTitle(title.isEmpty ? c.title : title)
@@ -262,7 +262,7 @@ struct YtArtistView: View {
                         Text("Albums, singles and EPs").font(.title3.weight(.bold))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 18, alignment: .top)], alignment: .leading, spacing: 20) {
                             ForEach(p.albums) { al in
-                                NavigationLink(value: YtCollection(kind: "album", id: al.id, title: al.title, artist: p.name)) {
+                                NavLink(value: YtCollection(kind: "album", id: al.id, title: al.title, artist: p.name)) {
                                     VStack(alignment: .leading, spacing: 5) {
                                         YtThumb(url: al.thumb, size: 150, radius: 10)
                                         Text(al.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
@@ -314,7 +314,7 @@ struct DownloadsView: View {
                     Section("Downloaded") { ForEach(doneItems) { it in row(it) } }
                   }
                 }
-                .scrollContentBackground(.hidden)
+                .clearScrollBackground()
             }
         }
     }

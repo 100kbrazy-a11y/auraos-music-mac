@@ -336,6 +336,6 @@ struct LookSettings: View {
                 Text("Always behind the text, never in front of it. Turned off while macOS Reduce Motion is on.").font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .groupedForm()
     }
 }

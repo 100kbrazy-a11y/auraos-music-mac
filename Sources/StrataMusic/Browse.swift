@@ -103,7 +103,7 @@ struct SongTable: View {
         .contextMenu(forSelectionType: String.self) { ids in menu(ids, list) } primaryAction: { ids in
             if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
         }
-        .scrollContentBackground(.hidden)
+        .clearScrollBackground()
         .task(id: sortKey) {
             let snapshot = songs, q = search, ord = order
             let result = await Task.detached(priority: .userInitiated) { Self.filtered(snapshot, q).sorted(using: ord) }.value
@@ -166,7 +166,7 @@ struct AlbumCard: View {
     @State private var hover = false
     var body: some View {
         ZStack(alignment: .topLeading) {
-            NavigationLink(value: AlbumRef(key: a.id)) {
+            NavLink(value: AlbumRef(key: a.id)) {
                 VStack(alignment: .leading, spacing: 6) {
                     CoverView(song: a.cover, size: size, radius: 10)
                         .shadow(color: .black.opacity(hover ? 0.5 : 0), radius: hover ? 14 : 0, y: hover ? 8 : 0)
@@ -260,7 +260,7 @@ struct AlbumDetail: View {
                         CoverView(song: a.cover, size: 220, radius: 14).shadow(color: .black.opacity(0.4), radius: 20, y: 10)
                         VStack(alignment: .leading, spacing: 8) {
                             Text(a.title).font(.system(size: 28, weight: .bold)).lineLimit(2)
-                            NavigationLink(value: ArtistRef(name: a.artist)) { Text(a.artist).font(.system(size: 18)).foregroundStyle(.secondary) }.buttonStyle(.plain)
+                            NavLink(value: ArtistRef(name: a.artist)) { Text(a.artist).font(.system(size: 18)).foregroundStyle(.secondary) }.buttonStyle(.plain)
                             Text([a.year, "\(a.songs.count) songs", fmtTime(a.songs.reduce(0) { $0 + $1.duration })].filter { !$0.isEmpty }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(.secondary)
                             HStack(spacing: 10) {
                                 PlayButtons(songs: a.songs)
@@ -288,7 +288,7 @@ struct ArtistsView: View {
         let q = search.trimmingCharacters(in: .whitespaces)
         let list = q.isEmpty ? lib.artists : lib.artists.filter { $0.id.localizedCaseInsensitiveContains(q) }
         List(list) { a in
-            NavigationLink(value: ArtistRef(name: a.id)) {
+            NavLink(value: ArtistRef(name: a.id)) {
                 HStack(spacing: 14) {
                     CoverView(song: a.cover, size: 46, radius: 23)
                     VStack(alignment: .leading, spacing: 1) {
@@ -299,7 +299,7 @@ struct ArtistsView: View {
                 .padding(.vertical, 3)
             }
         }
-        .scrollContentBackground(.hidden)
+        .clearScrollBackground()
         .overlay { if lib.songs.isEmpty { EmptyLibrary() } }
     }
 }

@@ -399,7 +399,6 @@ struct LyricsMenuButton: View {
     @EnvironmentObject var player: Player
     @ObservedObject private var store = LyricsStore.shared
     @ObservedObject private var sync = WordSync.shared
-    @Environment(\.openWindow) private var openWindow
     @AppStorage("lyricsWords") private var wordMode = true
     @AppStorage("censorLyrics") private var censor = false
     @AppStorage("lyricsRomanize") private var romanize = false
@@ -429,13 +428,13 @@ struct LyricsMenuButton: View {
                 Button(store.markedNone ? "This song has lyrics after all" : "This song has no lyrics") { Task { await store.toggleNone(s) } }
                 Divider()
                 Button("Share lyrics…") { sharing = true }.disabled(store.lines.isEmpty)
-                Button("Desktop lyrics") { openWindow(id: "desktoplyrics") }
+                Button("Desktop lyrics") { AppWindows.open("desktoplyrics") }
             } label: {
                 Image(systemName: "ellipsis").font(.system(size: 16, weight: .bold)).frame(width: 46, height: 46)
                     .glass(23, interactive: true).contentShape(Circle())
                     .scaleEffect(hover ? 1.08 : 1)
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.borderlessButton).hideMenuIndicator().fixedSize()
             .help("Lyrics options")
             .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
             .sheet(isPresented: $sharing) { LyricShareSheet(song: s, lines: store.lines, plain: store.plain) }

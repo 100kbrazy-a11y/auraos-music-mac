@@ -82,7 +82,7 @@ struct SleepButton: View {
         } label: {
             Image(systemName: player.sleepEnd != nil || player.sleepAtSongEnd ? "moon.zzz.fill" : "moon.zzz")
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).hideMenuIndicator().fixedSize()
         .help(player.sleepAtSongEnd ? "Stops after this song" : (player.sleepEnd.map { "Stops at " + $0.formatted(date: .omitted, time: .shortened) } ?? "Sleep timer"))
     }
 }
@@ -117,6 +117,6 @@ struct SpeedButton: View {
                 Button { player.speed = Float(r) } label: { Text(r == 1 ? "Normal speed" : "\(r.formatted())×") }
             }
         } label: { Image(systemName: "speedometer") }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Speed: \(player.speed.formatted())×")
+        .menuStyle(.borderlessButton).hideMenuIndicator().fixedSize().help("Speed: \(player.speed.formatted())×")
     }
 }

@@ -67,7 +67,7 @@ struct GeneralSettings: View {
                 Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .groupedForm(clearBackground: true)
     }
 }
 
@@ -116,7 +116,7 @@ struct PlaybackSettings: View {
             }
             .disabled(!enhanced)
         }
-        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .groupedForm(clearBackground: true)
         .onChange(of: level) { _ in Player.shared.refreshAnalysis() }
         .onChange(of: enhanced) { _ in Player.shared.applyAudioSettings() }
         .onChange(of: crossfade) { _ in Player.shared.applyAudioSettings() }
@@ -143,7 +143,7 @@ struct DownloadSettings: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Save songs in") {
+                CompatLabeled("Save songs in") {
                     HStack {
                         Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
                         Button("Choose…") { choose() }
@@ -155,11 +155,11 @@ struct DownloadSettings: View {
                 Text("Songs from YouTube are saved as M4A (AAC) files with their title, artist, album and cover, then added to your library. Search and download from the YouTube page in the sidebar, or from the search box when a song isn't in your library.")
             }
             Section("Now") {
-                LabeledContent("Downloading", value: "\(Downloads.shared.active)")
+                CompatLabeled("Downloading", value: "\(Downloads.shared.active)")
                 Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true) }
             }
         }
-        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .groupedForm(clearBackground: true)
     }
 
     private func choose() {
@@ -193,7 +193,7 @@ struct DiscordSettings: View {
                 Text("This talks to the Discord app on this Mac, the same way its own Rich Presence does: no sign-in, no token. Keep Discord open, and turn on Settings › Activity Privacy › Share my activity in Discord.")
             }
         }
-        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .groupedForm(clearBackground: true)
         .onReceive(NotificationCenter.default.publisher(for: Discord.statusChanged)) { _ in status = Discord.shared.status }
         .onChange(of: on) { _ in Player.shared.refreshDiscord() }
         .onChange(of: cover) { _ in Player.shared.refreshDiscord() }
@@ -209,7 +209,7 @@ struct UpdateSettings: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Version", value: Updater.current)
+                CompatLabeled("Version", value: Updater.current)
                 Toggle("Check for updates when the app opens", isOn: $auto)
                 HStack {
                     Button("Check Now") { Task { await updater.check() } }.disabled(updater.busy)
@@ -222,6 +222,6 @@ struct UpdateSettings: View {
                 Section("What's new in \(r.version)") { Text(b).font(.callout).textSelection(.enabled) }
             }
         }
-        .formStyle(.grouped).scrollContentBackground(.hidden)
+        .groupedForm(clearBackground: true)
     }
 }

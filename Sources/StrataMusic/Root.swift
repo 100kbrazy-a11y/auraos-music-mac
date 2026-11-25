@@ -16,8 +16,8 @@ struct RootView: View {
     @AppStorage("leaves") private var leaves = true
     @AppStorage("season") private var seasonRaw = ""
     @State private var nav: Nav? = .home
-    @State private var colVis = NavigationSplitViewVisibility.all
-    @State private var path = NavigationPath()
+    @State private var sidebarShown = true
+    @State private var path = AppPath()
     @State private var showPlayer = false
     @State private var search = ""
     @State private var dropping = false
@@ -55,36 +55,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            NavigationSplitView(columnVisibility: $colVis) {
-                SidebarView(nav: Binding(get: { nav }, set: { nav = $0; path = NavigationPath() }))
-                    .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
-            } detail: {
-                DetailRoot(nav: nav ?? .songs, search: search, path: $path)
-                    .background { if let fx = fx { DetailEffect(window: windowFrame, kind: fx) } }
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        if !showPlayer {
-                            TopHeader(title: pageTitle, canGoBack: !path.isEmpty, back: { if !path.isEmpty { path.removeLast() } },
-                                      toggleSidebar: { colVis = colVis == .detailOnly ? .all : .detailOnly },
-                                      showLayout: path.isEmpty && layoutPages, search: $search, focus: $searchFocus, addMusic: { lib.pickMusic() })
-                        }
-                    }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if player.current != nil {
-                            NowPlayingBar(open: openPlayer)
-                                .opacity(showPlayer ? 0 : 1).offset(y: showPlayer ? -90 : 0).scaleEffect(showPlayer ? 0.96 : 1, anchor: .top)
-                                .allowsHitTesting(!showPlayer)
-                        }
-                    }
-                    .overlay(alignment: .top) {
-                        if !lib.status.isEmpty {
-                            Text(lib.status).font(.system(size: 12, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7).glass(16).padding(.top, 8)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
-            }
-            // there is no window toolbar at all (it always drew a separate bar, most visibly in full screen): the title, the search box
-            // and the buttons are part of the page's own top edge instead
-            .toolbar(.hidden, for: .windowToolbar)
+            shell
             .animation(.easeInOut(duration: 0.2), value: lib.status)
 
             // typing in the search box: the page dims and a list of matches drops down
@@ -156,7 +127,7 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .ytSearch)) { n in
             if let a = n.object as? [String], a.count == 2 {
-                YouTube.shared.query = a[0]; YouTube.shared.type = a[1]; nav = .youtube; path = NavigationPath()
+                YouTube.shared.query = a[0]; YouTube.shared.type = a[1]; nav = .youtube; path.reset()
                 Task { await YouTube.shared.run() }
             }
             if showPlayer { closePlayer() }
@@ -192,10 +163,59 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPlayer)) { _ in openPlayer() }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in if !showPlayer { searchFocus = true } }
-        .onReceive(NotificationCenter.default.publisher(for: .showDownloads)) { _ in nav = .downloads; path = NavigationPath() }
+        .onReceive(NotificationCenter.default.publisher(for: .showDownloads)) { _ in nav = .downloads; path.reset() }
         .onReceive(NotificationCenter.default.publisher(for: .goRef)) { n in
             if let a = n.object as? AlbumRef { openAlbum(a.key) } else if let a = n.object as? ArtistRef { openArtist(a.name) }
             if showPlayer { closePlayer() }
+        }
+    }
+
+    private var sidebar: some View {
+        SidebarView(nav: Binding(get: { nav }, set: { nav = $0; path.reset() }))
+    }
+
+    /// the page next to the sidebar, with its top edge and the player bar under it
+    private var detailPage: some View {
+        DetailRoot(nav: nav ?? .songs, search: search, path: $path)
+                    .background { if let fx = fx { DetailEffect(window: windowFrame, kind: fx) } }
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if !showPlayer {
+                            TopHeader(title: pageTitle, canGoBack: !path.isEmpty, back: { if !path.isEmpty { path.removeLast() } },
+                                      toggleSidebar: { sidebarShown.toggle() },
+                                      showLayout: path.isEmpty && layoutPages, search: $search, focus: $searchFocus, addMusic: { lib.pickMusic() })
+                        }
+                    }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if player.current != nil {
+                            NowPlayingBar(open: openPlayer)
+                                .opacity(showPlayer ? 0 : 1).offset(y: showPlayer ? -90 : 0).scaleEffect(showPlayer ? 0.96 : 1, anchor: .top)
+                                .allowsHitTesting(!showPlayer)
+                        }
+                    }
+                    .overlay(alignment: .top) {
+                        if !lib.status.isEmpty {
+                            Text(lib.status).font(.system(size: 12, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7).glass(16).padding(.top, 8)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
+    }
+
+    /// the sidebar and the page. macOS 13 and later use a NavigationSplitView; macOS 12 has no such view, so it is a plain row there.
+    @ViewBuilder private var shell: some View {
+        if #available(macOS 13, *) {
+            NavigationSplitView(columnVisibility: Binding(get: { sidebarShown ? NavigationSplitViewVisibility.all : .detailOnly }, set: { sidebarShown = $0 != .detailOnly })) {
+                sidebar.navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 280)
+            } detail: {
+                detailPage
+            }
+            // there is no window toolbar at all (it always drew a separate bar, most visibly in full screen): the title, the search box
+            // and the buttons are part of the page's own top edge instead
+            .toolbar(.hidden, for: .windowToolbar)
+        } else {
+            HStack(spacing: 0) {
+                if sidebarShown { sidebar.listStyle(.sidebar).frame(width: 215); Divider() }
+                detailPage
+            }
         }
     }
 
@@ -204,12 +224,12 @@ struct RootView: View {
 
     private func finishSearch() { search = ""; searchFocus = false }
     private func openSong(_ s: Song, _ list: [Song]) { player.play(s, in: list); finishSearch() }
-    private func openAlbum(_ key: String) { nav = .albums; path = NavigationPath(); path.append(AlbumRef(key: key)); finishSearch() }
-    private func openArtist(_ name: String) { nav = .artists; path = NavigationPath(); path.append(ArtistRef(name: name)); finishSearch() }
+    private func openAlbum(_ key: String) { nav = .albums; path.reset(); path.append(AlbumRef(key: key)); finishSearch() }
+    private func openArtist(_ name: String) { nav = .artists; path.reset(); path.append(ArtistRef(name: name)); finishSearch() }
     private func searchWeb() {
         let q = search.trimmingCharacters(in: .whitespaces)
         YouTube.shared.query = q; YouTube.shared.type = "song"
-        nav = .youtube; path = NavigationPath(); search = ""; searchFocus = false
+        nav = .youtube; path.reset(); search = ""; searchFocus = false
         Task { await YouTube.shared.run() }
     }
 }
@@ -567,38 +587,49 @@ struct SidebarView: View {
 struct DetailRoot: View {
     let nav: Nav
     let search: String
-    @Binding var path: NavigationPath
+    @Binding var path: AppPath
     @EnvironmentObject var lib: Library
 
     var body: some View {
-        NavigationStack(path: $path) {
-            Group {
-                switch nav {
-                case .home: HomeView()
-                case .replay: ReplayView()
-                case .songs: SongTable(songs: lib.songs, search: search)
-                case .recent: SongTable(songs: lib.recentSongs, search: search, recent: true)
-                case .albums: AlbumsView(search: search)
-                case .artists: ArtistsView(search: search)
-                case .favorites: SongTable(songs: lib.favoriteSongs, search: search)
-                case .duplicates: DuplicatesView()
-                case .smart(let id):
-                    if let sp = lib.smartPlaylist(id) { SongTable(songs: lib.songs(in: sp), search: search, keepOrder: true) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
-                case .youtube: YouTubeView()
-                case .downloads: DownloadsView()
-                case .playlist(let id):
-                    if let p = lib.playlists.first(where: { $0.id == id }) { SongTable(songs: lib.songs(in: p), search: search) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
-                }
+        stack
+            .id(nav)
+            .transition(.opacity)
+            .animation(.easeOut(duration: 0.16), value: nav)
+    }
+
+    /// the page you are on, with the pages you went into on top of it (a NavigationStack on macOS 13 and later, a plain stack on macOS 12)
+    @ViewBuilder private var stack: some View {
+        if #available(macOS 13, *) {
+            NavigationStack(path: Binding(get: { path.modern }, set: { path.modern = $0 })) {
+                page
+                    .navigationTitle(title)
+                    .navigationDestination(for: AlbumRef.self) { AlbumDetail(key: $0.key) }
+                    .navigationDestination(for: ArtistRef.self) { ArtistDetail(name: $0.name) }
+                    .navigationDestination(for: YtCollection.self) { YtCollectionView(c: $0) }
+                    .navigationDestination(for: YtArtistRef.self) { YtArtistView(a: $0) }
             }
-            .navigationTitle(title)
-            .navigationDestination(for: AlbumRef.self) { AlbumDetail(key: $0.key) }
-            .navigationDestination(for: ArtistRef.self) { ArtistDetail(name: $0.name) }
-            .navigationDestination(for: YtCollection.self) { YtCollectionView(c: $0) }
-            .navigationDestination(for: YtArtistRef.self) { YtArtistView(a: $0) }
+        } else {
+            LegacyStack(path: $path, root: page.navigationTitle(title))
         }
-        .id(nav)
-        .transition(.opacity)
-        .animation(.easeOut(duration: 0.16), value: nav)
+    }
+
+    @ViewBuilder private var page: some View {
+        switch nav {
+        case .home: HomeView()
+        case .replay: ReplayView()
+        case .songs: SongTable(songs: lib.songs, search: search)
+        case .recent: SongTable(songs: lib.recentSongs, search: search, recent: true)
+        case .albums: AlbumsView(search: search)
+        case .artists: ArtistsView(search: search)
+        case .favorites: SongTable(songs: lib.favoriteSongs, search: search)
+        case .duplicates: DuplicatesView()
+        case .smart(let id):
+            if let sp = lib.smartPlaylist(id) { SongTable(songs: lib.songs(in: sp), search: search, keepOrder: true) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
+        case .youtube: YouTubeView()
+        case .downloads: DownloadsView()
+        case .playlist(let id):
+            if let p = lib.playlists.first(where: { $0.id == id }) { SongTable(songs: lib.songs(in: p), search: search) } else { Text("This playlist is gone.").foregroundStyle(.secondary) }
+        }
     }
 
     private var title: String {

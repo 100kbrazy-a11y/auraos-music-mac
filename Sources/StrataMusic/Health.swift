@@ -182,7 +182,7 @@ struct AdvancedSettings: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .groupedForm()
     }
 }
 

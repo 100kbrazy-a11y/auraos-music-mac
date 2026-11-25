@@ -87,7 +87,7 @@ struct EditInfoSheet: View {
                     TextField("Album artist", text: $albumArtist)
                     HStack { TextField("Year", text: $year); TextField("Track", text: $track) }
                 }
-                .formStyle(.columns)
+                .columnsForm()
             }
             HStack {
                 Button { Task { await lookUp() } } label: { Label("Look Up Song Info…", systemImage: "magnifyingglass") }.disabled(busy)
@@ -385,7 +385,7 @@ struct DuplicatesView: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
+            .clearScrollBackground()
         }
     }
 }

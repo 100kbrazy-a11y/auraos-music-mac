@@ -41,7 +41,6 @@ enum Presence {
 struct MenuBarPlayer: View {
     @EnvironmentObject var player: Player
     @EnvironmentObject var lib: Library
-    @Environment(\.openWindow) private var openWindow
     @AppStorage("menuLyrics") private var menuLyrics = true
 
     var body: some View {
@@ -81,8 +80,8 @@ struct MenuBarPlayer: View {
             }
             Divider()
             HStack {
-                Button("Open Strata Music") { Presence.showMain { openWindow(id: "main") } }
-                Button("Mini Player") { Presence.toggleMini { openWindow(id: "mini") } }
+                Button("Open Strata Music") { Presence.showMain { AppWindows.open("main") } }
+                Button("Mini Player") { Presence.toggleMini { AppWindows.open("mini") } }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
@@ -97,7 +96,6 @@ struct MenuBarPlayer: View {
 struct MiniPlayerView: View {
     @EnvironmentObject var player: Player
     @EnvironmentObject var lib: Library
-    @Environment(\.openWindow) private var openWindow
     @AppStorage("miniOnTop") private var onTop = true
 
     var body: some View {
@@ -117,7 +115,7 @@ struct MiniPlayerView: View {
         .preferredColorScheme(.dark)
         .contextMenu {
             Toggle("Keep on Top", isOn: $onTop)
-            Button("Open Strata Music") { Presence.showMain { openWindow(id: "main") } }
+            Button("Open Strata Music") { Presence.showMain { AppWindows.open("main") } }
             Button("Close") { Presence.miniWindow?.close() }
         }
         .background(WindowAccessor { w in

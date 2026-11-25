@@ -1,41 +1,45 @@
 import SwiftUI
 import AppKit
 
+/// picks the app for this macOS: macOS 13 and later get every window and the menu bar item as SwiftUI scenes; macOS 12 has no scenes for
+/// those (no Window, no MenuBarExtra, no openWindow), so they are built by hand there (see Compat.swift)
 @main
-struct StrataApp: App {
-    @StateObject private var lib = Library()
-    @StateObject private var player = Player.shared
-    @StateObject private var updater = Updater()
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.openWindow) private var openWindow
-    @AppStorage("menuBar") private var menuBar = true
-
-    init() {
+@MainActor
+enum Launcher {
+    static func main() {
         // scroll bars appear only while you scroll, whatever the Mac's own setting (this applies to Strata alone)
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+        if #available(macOS 13, *) { StrataApp.main() } else { StrataApp12.main() }
     }
+}
 
-    var body: some Scene {
-        WindowGroup(id: "main") {
-            RootView()
-                .environmentObject(lib)
-                .environmentObject(player)
-                .environmentObject(updater)
-                .frame(minWidth: 980, minHeight: 640)
-                .preferredColorScheme(.dark)
-                .onOpenURL { url in
-                    if url.scheme == "strata" { URLCommands.handle(url, lib: lib, player: player) }
-                    else { lib.importURLs([url], thenPlay: true) }
-                }
-                .task {
-                    // when the app opens, then every few hours while it stays open
-                    while !Task.isCancelled {
-                        if UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true { await updater.check(silent: true) }
-                        try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
-                    }
-                }
+/// the library window, as both apps build it
+@MainActor
+func strataMain(lib: Library, player: Player, updater: Updater) -> some View {
+    RootView()
+        .environmentObject(lib)
+        .environmentObject(player)
+        .environmentObject(updater)
+        .frame(minWidth: 980, minHeight: 640)
+        .preferredColorScheme(.dark)
+        .captureOpenWindow()
+        .onAppear { LegacyMenuBar.startIfNeeded() }
+        .onOpenURL { url in
+            if url.scheme == "strata" { URLCommands.handle(url, lib: lib, player: player) }
+            else { lib.importURLs([url], thenPlay: true) }
         }
-        .commands {
+        .task {
+            // when the app opens, then every few hours while it stays open
+            while !Task.isCancelled {
+                if UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true { await updater.check(silent: true) }
+                try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
+            }
+        }
+}
+
+/// the menus (the same on every macOS); [open] opens a window by name
+@MainActor @CommandsBuilder
+func strataCommands(lib: Library, player: Player, updater: Updater, open: @escaping (String) -> Void) -> some Commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { Task { await updater.check() } }
             }
@@ -46,7 +50,7 @@ struct StrataApp: App {
                 Button("Add Music…") { lib.pickMusic() }.keyboardShortcut("o")
             }
             CommandGroup(replacing: .help) {
-                Button("Keyboard Shortcuts") { openWindow(id: "shortcuts") }.keyboardShortcut("/", modifiers: .command)
+                Button("Keyboard Shortcuts") { open("shortcuts") }.keyboardShortcut("/", modifiers: .command)
             }
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.togglePlay() }.keyboardShortcut(.space, modifiers: [])
@@ -66,15 +70,33 @@ struct StrataApp: App {
                 Button("Lyrics") { NotificationCenter.default.post(name: .openPlayer, object: nil); NotificationCenter.default.post(name: .playerPage, object: 0) }.keyboardShortcut("l", modifiers: [.command, .option])
                 Button("Up Next") { NotificationCenter.default.post(name: .toggleQueue, object: nil) }.keyboardShortcut("u", modifiers: .command)
                 Button("Show Current Song's Album") { NotificationCenter.default.post(name: .jumpCurrent, object: nil) }.keyboardShortcut("j", modifiers: .command)
-                Button("Mini Player") { Presence.toggleMini { openWindow(id: "mini") } }.keyboardShortcut("m", modifiers: [.command, .option])
-                Button("Desktop Lyrics") { Presence.toggleDesktopLyrics { openWindow(id: "desktoplyrics") } }.keyboardShortcut("d", modifiers: [.command, .option])
+                Button("Mini Player") { Presence.toggleMini { open("mini") } }.keyboardShortcut("m", modifiers: [.command, .option])
+                Button("Desktop Lyrics") { Presence.toggleDesktopLyrics { open("desktoplyrics") } }.keyboardShortcut("d", modifiers: [.command, .option])
                 Divider()
                 Button(player.current.map { lib.isFav($0) } == true ? "Remove from Favorites" : "Add to Favorites") { if let s = player.current { lib.toggleFav(s) } }.keyboardShortcut("l", modifiers: .command)
                 Button("Start Radio from This Song") { if let s = player.current { Radio.shared.start(from: s) } }
             }
+        
+}
+
+// MARK: - macOS 13 and later
+
+@available(macOS 13, *)
+struct StrataApp: App {
+    @StateObject private var lib = Library()
+    @StateObject private var player = Player.shared
+    @StateObject private var updater = Updater()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage("menuBar") private var menuBar = true
+
+    var body: some Scene {
+        WindowGroup(id: "main") {
+            strataMain(lib: lib, player: player, updater: updater)
         }
+        .commands { strataCommands(lib: lib, player: player, updater: updater, open: { openWindow(id: $0) }) }
         MenuBarExtra(isInserted: $menuBar) {
-            MenuBarPlayer().environmentObject(lib).environmentObject(player)
+            MenuBarPlayer().environmentObject(lib).environmentObject(player).captureOpenWindow()
         } label: {
             Image(systemName: player.isPlaying ? "waveform" : "music.note")
         }
@@ -93,6 +115,25 @@ struct StrataApp: App {
             ShortcutsView()
         }
         .windowResizability(.contentSize)
+        Settings {
+            SettingsView().environmentObject(lib).environmentObject(updater)
+        }
+    }
+}
+
+// MARK: - macOS 12
+
+struct StrataApp12: App {
+    @StateObject private var lib = Library()
+    @StateObject private var player = Player.shared
+    @StateObject private var updater = Updater()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            strataMain(lib: lib, player: player, updater: updater)
+        }
+        .commands { strataCommands(lib: lib, player: player, updater: updater, open: { AppWindows.open($0) }) }
         Settings {
             SettingsView().environmentObject(lib).environmentObject(updater)
         }

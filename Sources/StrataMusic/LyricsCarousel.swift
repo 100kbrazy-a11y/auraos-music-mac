@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// words laid out left to right, wrapping onto new lines like text does (each word is its own view so it can light up on its own)
+@available(macOS 13, *)
 struct FlowLayout: Layout {
     var lineSpacing: CGFloat = 4
 
@@ -67,8 +68,8 @@ struct LiveLine: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !playing || !act.active)) { _ in
             let t = clock.live + 0.05 - offset
-            FlowLayout(lineSpacing: size * 0.06) {
-                ForEach(Array(line.words.enumerated()), id: \.offset) { i, w in
+            WordFlow(lineSpacing: size * 0.06, count: line.words.count) { i in
+                    let w = line.words[i]
                     let following = i + 1 < line.words.count ? line.words[i + 1].start : (line.sungEnd > w.start + 0.3 ? line.sungEnd : max(w.start + 0.4, line.end - 0.1))
                     // a word is lit while it is sung: up to where the file says it stops, not across the pause after it
                     let next = w.end.map { min(max($0, w.start + 0.1), following) } ?? following
@@ -77,7 +78,6 @@ struct LiveLine: View {
                     let p = max(0, min(1, (t - w.start) / dur))
                     let shown = LyricsFilter.clean(w.text)
                     WordView(text: shown.trimmingCharacters(in: .whitespaces), progress: p, spaceAfter: shown.hasSuffix(" "), size: size)
-                }
             }
         }
     }

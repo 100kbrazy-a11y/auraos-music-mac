@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "StrataMusic",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v12)],
     targets: [
         // the small voice finder behind precise word timing (plain C, no libraries)
         .target(name: "CVoice", path: "Sources/CVoice"),

@@ -259,6 +259,6 @@ struct SyncSettings: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .groupedForm()
     }
 }
