@@ -113,15 +113,41 @@ struct RoutePicker: NSViewRepresentable {
     func updateNSView(_ v: AVRoutePickerView, context: Context) {}
 }
 
-/// playback speed
+/// playback speed: a button that opens a slider (0.5x to 2x, snapping to steps of 0.05, so 1.10x is one of them) with the usual speeds under it
 struct SpeedButton: View {
     @EnvironmentObject var player: Player
+    @State private var show = false
+
     var body: some View {
-        Menu {
-            ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { r in
-                Button { player.speed = Float(r) } label: { Text(r == 1 ? "Normal speed" : "\(r.formatted())×") }
+        Button { show.toggle() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "speedometer")
+                if player.speed != 1 { Text(String(format: "%.2f×", player.speed)).font(.system(size: 11, weight: .semibold)).monospacedDigit() }
             }
-        } label: { Image(systemName: "speedometer") }
-        .menuStyle(.borderlessButton).hideMenuIndicator().fixedSize().help("Speed: \(player.speed.formatted())×")
+        }
+        .buttonStyle(.plain).help(String(format: "Speed: %.2f×", player.speed))
+        .popover(isPresented: $show, arrowEdge: .top) { SpeedPopover().environmentObject(player) }
+    }
+}
+
+struct SpeedPopover: View {
+    @EnvironmentObject var player: Player
+    private let presets: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Speed").font(.headline)
+                Spacer()
+                Text(String(format: "%.2f×", player.speed)).font(.system(size: 15, weight: .semibold)).monospacedDigit()
+            }
+            Slider(value: Binding(get: { Double(player.speed) }, set: { player.speed = Float(($0 * 20).rounded() / 20) }), in: 0.5...2, step: 0.05)
+            HStack(spacing: 6) {
+                ForEach(presets, id: \.self) { r in
+                    Button(r == 1 ? "1×" : "\(r.formatted())×") { player.speed = r }.buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+        }
+        .padding(16).frame(width: 300)
     }
 }

@@ -2,6 +2,14 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.4.2",
+   "name": "The Macster Update",
+   "date": "2026-11-27",
+   "notes": [
+    "Speed is a slider now: click the speed button in the player and drag from 0.5× to 2× in steps of 0.05 (so 1.10× works), or tap one of the usual speeds under it. The button shows the speed when it isn't 1×."
+   ]
+  },
+  {
    "version": "3.4.1",
    "name": "The Macster Update",
    "date": "2026-11-27",
