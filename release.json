@@ -2,6 +2,15 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.3.1",
+   "name": "The Macster Update",
+   "date": "2026-11-27",
+   "notes": [
+    "Full-screen player: the pages now slide with your fingers. Swipe sideways with two fingers on the trackpad and the page follows you, with the next one coming in beside it. Let go past the middle, or flick, to move on; bring it back to cancel. Tapping a tab slides to it the same way.",
+    "At the first and last page the swipe pulls back like a rubber band."
+   ]
+  },
+  {
    "version": "3.3.0",
    "name": "The Macster Update",
    "date": "2026-11-27",

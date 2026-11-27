@@ -1,35 +1,111 @@
 import SwiftUI
 import AppKit
 
-/// the full-screen player: three pages (Lyrics, Current Song, Artist) and the little glass pill that switches them
+/// the full-screen player: three pages (Lyrics, Current Song, Artist) and the little glass pill that switches them.
+/// The pages sit side by side on a strip. A two-finger swipe on the trackpad drags the strip with your fingers; let go past the
+/// middle (or with a flick) and it slides to the next page, bring it back and it returns to where it was.
 struct FullPlayerView: View {
     @EnvironmentObject var player: Player
     var close: () -> Void
-    @State private var page = UserDefaults.standard.object(forKey: "playerStart") as? Int ?? 1
+    @State private var page: Int
+    /// where the strip is, counted in pages along the pill's order: 1 is the second page, 1.5 is halfway to the third
+    @State private var pos: CGFloat
+    /// pages that stay drawn until a slide has finished
+    @State private var keep: Set<Int> = []
+    @State private var keepGen = 0
     @State private var hoverClose = false
     @State private var isFull = false
     @AppStorage("playerPages") private var pageOrder = "0,1,2"
 
-    /// a two-finger swipe moves to the next page (fingers moving left) or the one before it (fingers moving right), in the order the pill shows them
-    private func swipe(_ direction: Int) {
-        let order = PlayerPages.parse(pageOrder)
-        guard let i = order.firstIndex(of: page), order.indices.contains(i + direction) else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = order[i + direction] }
+    init(close: @escaping () -> Void) {
+        self.close = close
+        let d = UserDefaults.standard
+        let saved = d.object(forKey: "playerStart") as? Int ?? 1
+        let start = (0...2).contains(saved) ? saved : 1
+        let order = PlayerPages.parse(d.string(forKey: "playerPages") ?? "0,1,2")
+        _page = State(initialValue: start)
+        _pos = State(initialValue: CGFloat(order.firstIndex(of: start) ?? 0))
+    }
+
+    private var order: [Int] { PlayerPages.parse(pageOrder) }
+
+    /// the pages that have to be drawn right now: the ones the strip is showing, the chosen one, and any still sliding away
+    private var drawnPages: [Int] {
+        let o = order
+        guard !o.isEmpty else { return [] }
+        let lo = min(max(Int(pos.rounded(.down)), 0), o.count - 1)
+        let hi = min(max(Int(pos.rounded(.up)), 0), o.count - 1)
+        var set = Set(o[lo...hi])
+        set.insert(page)
+        set.formUnion(keep)
+        return o.filter { set.contains($0) }
+    }
+
+    @ViewBuilder private func pageContent(_ p: Int) -> some View {
+        Group {
+            switch p {
+            case 0: LyricsPage()
+            case 2: ArtistPage()
+            default: SongPage()
+            }
+        }
+        // the Current Song page centres itself in the whole window; the others keep clear of the buttons
+        .padding(.top, p == 1 ? 0 : (isFull ? 100 : 124)).padding(.bottom, p == 1 ? 0 : 92)
+    }
+
+    /// slides the strip to the page at [index] (a spring), keeping every page it passes drawn until it has arrived
+    private func settle(to index: Int, page newPage: Int? = nil) {
+        let o = order
+        guard o.indices.contains(index) else { return }
+        let lo = min(max(Int(pos.rounded(.down)), 0), index), hi = max(min(Int(pos.rounded(.up)), o.count - 1), index)
+        keep = Set(o[lo...hi])
+        keepGen += 1
+        let gen = keepGen
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+            pos = CGFloat(index)
+            if let n = newPage { page = n }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { if keepGen == gen { keep = [] } }
+    }
+
+    /// the fingers are down and moving: the strip follows them one to one (with a rubber band at the first and last page)
+    private func dragged(_ travel: CGFloat, _ width: CGFloat) {
+        guard width > 0, let i = order.firstIndex(of: page) else { return }
+        let moved = min(max(travel / width, -1), 1)
+        var p = CGFloat(i) - moved
+        let last = CGFloat(order.count - 1)
+        if p < 0 { p *= 0.3 } else if p > last { p = last + (p - last) * 0.3 }
+        keepGen += 1
+        var t = Transaction(animation: nil); t.disablesAnimations = true
+        withTransaction(t) { pos = p }
+    }
+
+    /// the fingers lifted: go to the neighbouring page if they were pulled far enough, or flicked, otherwise slide back
+    private func dragEnded(_ travel: CGFloat, _ velocity: CGFloat, _ width: CGFloat) {
+        guard width > 0, let i = order.firstIndex(of: page) else { return }
+        var step = 0                                   // +1: the page on the right, -1: the one on the left
+        if abs(velocity) > 400 {
+            // a flick decides, unless the fingers were flicked back the way they came (that cancels)
+            if velocity * travel >= 0 || abs(travel) < 8 { step = velocity < 0 ? 1 : -1 }
+        } else if abs(travel) > width * 0.4 { step = travel < 0 ? 1 : -1 }
+        let target = min(max(i + step, 0), order.count - 1)
+        settle(to: target, page: order[target])
     }
 
     var body: some View {
         ZStack {
-            Group {
-                switch page {
-                case 0: LyricsPage()
-                case 2: ArtistPage()
-                default: SongPage()
+            GeometryReader { geo in
+                let o = order
+                ZStack {
+                    ForEach(drawnPages, id: \.self) { p in
+                        pageContent(p)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .offset(x: (CGFloat(o.firstIndex(of: p) ?? 0) - pos) * geo.size.width)
+                            .transition(.identity)
+                    }
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .id(page)
-            .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            // the Current Song page centres itself in the whole window; the others keep clear of the buttons
-            .padding(.top, page == 1 ? 0 : (isFull ? 100 : 124)).padding(.bottom, page == 1 ? 0 : 92)
 
             VStack {
                 Spacer()
@@ -60,32 +136,46 @@ struct FullPlayerView: View {
             Button("Close", action: close).keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
         .ignoresSafeArea()
-        .background(TrackpadSwipe { swipe($0) })
+        .background(TrackpadSwipe(onDrag: { dragged($0, $1) }, onEnd: { dragEnded($0, $1, $2) }))
         .onAppear { isFull = NSApp.keyWindow?.styleMask.contains(.fullScreen) ?? false }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in isFull = true }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in isFull = false }
         .onExitCommand(perform: close)
+        // a tap on the pill (or the menu) changes the page: slide the strip there too
+        .onChange(of: page) { newPage in
+            guard let j = order.firstIndex(of: newPage), abs(pos - CGFloat(j)) > 0.001 else { return }
+            settle(to: j)
+        }
+        .onChange(of: pageOrder) { _ in
+            if let j = order.firstIndex(of: page) { pos = CGFloat(j) }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .playerPage)) { n in
             if let p = n.object as? Int { withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = p } }
         }
     }
 }
 
-/// Listens for sideways two-finger swipes on a trackpad (or a Magic Mouse) anywhere in its window and reports them once per swipe:
-/// 1 when the fingers moved left, -1 when they moved right. It never takes clicks, and it stays out of the way of vertical scrolling and
-/// of anything that scrolls sideways itself (such as the row of albums on the Artist page).
+/// Follows sideways two-finger swipes on a trackpad (or a Magic Mouse) anywhere in its window, while the fingers are down.
+/// onDrag: how far the fingers have travelled so far (positive: to the right) and the width of the window.
+/// onEnd: the same, plus how fast they were going (points per second, positive: to the right) when they lifted.
+/// It never takes clicks. Once a gesture is clearly sideways it keeps the events to itself (so nothing underneath scrolls too);
+/// vertical scrolling, and anything that scrolls sideways itself (the row of albums on the Artist page), are left alone.
 struct TrackpadSwipe: NSViewRepresentable {
-    var onSwipe: (Int) -> Void
+    var onDrag: (CGFloat, CGFloat) -> Void
+    var onEnd: (CGFloat, CGFloat, CGFloat) -> Void
 
-    func makeNSView(context: Context) -> Catcher { let v = Catcher(); v.onSwipe = onSwipe; return v }
-    func updateNSView(_ v: Catcher, context: Context) { v.onSwipe = onSwipe }
+    func makeNSView(context: Context) -> Catcher { let v = Catcher(); v.onDrag = onDrag; v.onEnd = onEnd; return v }
+    func updateNSView(_ v: Catcher, context: Context) { v.onDrag = onDrag; v.onEnd = onEnd }
 
     final class Catcher: NSView {
-        var onSwipe: (Int) -> Void = { _ in }
+        var onDrag: (CGFloat, CGFloat) -> Void = { _, _ in }
+        var onEnd: (CGFloat, CGFloat, CGFloat) -> Void = { _, _, _ in }
+        private enum Mode { case undecided, sideways, other }
+        private var mode = Mode.undecided
         private var monitor: Any?
         private var sumX: CGFloat = 0
         private var sumY: CGFloat = 0
-        private var fired = false
+        private var samples: [(t: TimeInterval, dx: CGFloat)] = []
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -94,25 +184,40 @@ struct TrackpadSwipe: NSViewRepresentable {
             if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-                self?.handle(event)
+                if let me = self, me.handle(event) { return nil }
                 return event
             }
         }
 
-        private func handle(_ event: NSEvent) {
-            guard let w = window, event.window === w, event.hasPreciseScrollingDeltas else { return }
-            if event.phase.contains(.began) || event.phase.contains(.mayBegin) { sumX = 0; sumY = 0; fired = false }
-            // the glide after the fingers lift is not a new swipe
-            guard event.momentumPhase.isEmpty else { return }
-            if overSidewaysScroller(event, in: w) { return }
+        /// returns true when the event belongs to a sideways swipe and should not go any further
+        private func handle(_ event: NSEvent) -> Bool {
+            guard let w = window, event.window === w, event.hasPreciseScrollingDeltas else { return false }
+            if event.phase.contains(.began) || event.phase.contains(.mayBegin) { sumX = 0; sumY = 0; mode = .undecided; samples = [] }
+            // the glide after the fingers lift belongs to the swipe that started it
+            if !event.momentumPhase.isEmpty { return mode == .sideways }
             sumX += event.scrollingDeltaX
             sumY += event.scrollingDeltaY
-            if !fired, abs(sumX) > 60, abs(sumX) > abs(sumY) * 1.6 {
-                fired = true
-                // with natural scrolling a positive delta is fingers moving right; with it off the sign is the other way round
-                let fingersRight = event.isDirectionInvertedFromDevice ? sumX : -sumX
-                onSwipe(fingersRight < 0 ? 1 : -1)
+            if mode == .undecided {
+                if overSidewaysScroller(event, in: w) { mode = .other }
+                else if abs(sumX) > 8, abs(sumX) > abs(sumY) * 1.4 { mode = .sideways }
+                else if abs(sumY) > 8 { mode = .other }
             }
+            guard mode == .sideways else { return false }
+            // with natural scrolling a positive delta is fingers moving right; with it off the sign is the other way round
+            let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+            samples.append((event.timestamp, event.scrollingDeltaX * sign))
+            if samples.count > 6 { samples.removeFirst() }
+            let travel = sumX * sign
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                var velocity: CGFloat = 0
+                if let first = samples.first, let last = samples.last, last.t > first.t {
+                    velocity = samples.dropFirst().reduce(CGFloat(0)) { $0 + $1.dx } / CGFloat(last.t - first.t)
+                }
+                onEnd(travel, velocity, bounds.width)
+            } else {
+                onDrag(travel, bounds.width)
+            }
+            return true
         }
 
         /// true when the pointer is over something that scrolls sideways, which should keep the swipe for itself
