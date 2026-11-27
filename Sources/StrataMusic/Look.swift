@@ -207,46 +207,20 @@ struct LookSettings: View {
     @AppStorage("bgStyle") private var bgStyle = "aurora"
     @AppStorage("glassTint") private var glassTint = 1.0
     @AppStorage("barRadius") private var barRadius = 26.0
-    @AppStorage("playerStart") private var playerStart = 1
-    @AppStorage("playerCover") private var playerCover = 1.0
-    @AppStorage("coverShape") private var coverShape = "rounded"
-    @AppStorage("coverShadow") private var coverShadow = true
-    @AppStorage("pbSpeed") private var pbSpeed = true
-    @AppStorage("pbRoute") private var pbRoute = true
-    @AppStorage("pbSleep") private var pbSleep = true
-    @AppStorage("pbQueue") private var pbQueue = true
-    @AppStorage("pbExport") private var pbExport = true
-    @AppStorage("barCompact") private var barCompact = false
-    @AppStorage("barHeart") private var barHeart = true
-    @AppStorage("barQueue") private var barQueue = true
     @AppStorage("listCover") private var listCover = 34.0
     @AppStorage("season") private var season = ""
     @AppStorage("leaves") private var legacyLeaves = true
-    @AppStorage("playerPages") private var playerPages = "0,1,2"
     @AppStorage("songsLayout") private var songsLayout = "table"
-    @AppStorage("visualizer") private var visualizer = "bars"
     @AppStorage("appIcon") private var appIcon = "original"
     @AppStorage("effects") private var effects = "full"
-    private let pageNames = ["Lyrics", "Current Song", "Artist"]
-
-    private func movePage(_ p: Int, _ by: Int) {
-        var a = PlayerPages.parse(playerPages)
-        guard let i = a.firstIndex(of: p), a.indices.contains(i + by) else { return }
-        a.swapAt(i, i + by)
-        playerPages = PlayerPages.text(a)
-    }
 
     private let swatches = ["#9E80FF", "#FF5E7E", "#FF8A3D", "#F5C542", "#4FD18B", "#3FC1E8", "#4C7DFF", "#C2C2CC"]
 
     var body: some View {
         Form {
             Section("Colours") {
-                Picker("Accent colour", selection: $accentMode) {
-                    Text("From the cover").tag("cover")
-                    Text("Always the same").tag("fixed")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: accentMode) { _ in Player.shared.refreshAccent() }
+                SettingChoice(title: "Accent colour", selection: $accentMode, options: [("cover", "From the cover"), ("fixed", "Always the same")])
+                    .onChange(of: accentMode) { _ in Player.shared.refreshAccent() }
                 if accentMode == "fixed" {
                     HStack(spacing: 8) {
                         ForEach(swatches, id: \.self) { h in
@@ -265,45 +239,19 @@ struct LookSettings: View {
                 }
             }
             Section("Glass") {
-                HStack { Text("Colour in the glass"); Slider(value: $glassTint, in: 0...1); Text("\(Int(glassTint * 100))%").monospacedDigit().frame(width: 40, alignment: .trailing) }
-                HStack { Text("Media bar corners"); Slider(value: $barRadius, in: 12...34, step: 1); Text("\(Int(barRadius))").monospacedDigit().frame(width: 40, alignment: .trailing) }
-                Text("The glass look itself comes from macOS 26. On older macOS you get the frosted version.").font(.callout).foregroundStyle(.secondary)
+                SliderRow(title: "Colour in the glass", value: $glassTint, range: 0...1, standard: 1, unit: "%", scale: 100)
+                SliderRow(title: "Media bar corners", value: $barRadius, range: 12...34, step: 1, standard: 26)
+                SettingNote("The glass look itself comes from macOS 26. On older macOS you get the frosted version.")
             }
-            Section("Player") {
-                Picker("Opens on", selection: $playerStart) {
-                    Text("Lyrics").tag(0); Text("Current Song").tag(1); Text("Artist").tag(2)
+            Section("Seasons and effects") {
+                Picker("Falling effect", selection: Binding(get: { season.isEmpty ? (legacyLeaves ? "autumn" : "off") : season }, set: { season = $0 })) {
+                    ForEach(Season.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                HStack { Text("Cover size"); Slider(value: $playerCover, in: 0.6...1.15); Text("\(Int(playerCover * 100))%").monospacedDigit().frame(width: 44, alignment: .trailing) }
-                Picker("Cover shape", selection: $coverShape) {
-                    Text("Rounded").tag("rounded"); Text("Square").tag("square"); Text("Circle").tag("circle")
-                }
-                .pickerStyle(.segmented)
-                Toggle("Shadow under the cover", isOn: $coverShadow)
-                Toggle("Speed button", isOn: $pbSpeed)
-                Toggle("AirPlay button", isOn: $pbRoute)
-                Toggle("Sleep timer button", isOn: $pbSleep)
-                Toggle("Up Next button", isOn: $pbQueue)
-                Toggle("Export button", isOn: $pbExport)
+                SettingChoice(title: "Animated effects", help: "Light turns off the falling effect. It is also off in Low Power Mode, while the window is hidden, and while macOS Reduce Motion is on. It is always behind the text.", selection: $effects, options: [("full", "Full"), ("light", "Light")])
             }
-            Section("Player pages") {
-                ForEach(PlayerPages.parse(playerPages), id: \.self) { p in
-                    HStack {
-                        Text(pageNames[p])
-                        Spacer()
-                        Button { movePage(p, -1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.borderless)
-                        Button { movePage(p, 1) } label: { Image(systemName: "chevron.down") }.buttonStyle(.borderless)
-                    }
-                }
-                Picker("Visualizer", selection: $visualizer) {
-                    Text("Bars").tag("bars"); Text("Mirrored").tag("mirror"); Text("Off").tag("off")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: visualizer) { _ in Player.shared.refreshAnalysis() }
-            }
-            Section("Media bar") {
-                Toggle("Compact (no seek bar, smaller cover)", isOn: $barCompact)
-                Toggle("Like button", isOn: $barHeart)
-                Toggle("Up Next button", isOn: $barQueue)
+            Section("Lists") {
+                SettingChoice(title: "Songs layout", selection: $songsLayout, options: [("table", "Table"), ("list", "List")])
+                SliderRow(title: "Cover size in lists", value: $listCover, range: 24...60, step: 2, standard: 34, unit: " pt")
             }
             Section("App icon") {
                 HStack(spacing: 10) {
@@ -319,21 +267,10 @@ struct LookSettings: View {
                         .onTapGesture { appIcon = v.id; AppIcons.apply(v.id) }
                     }
                 }
-                Text("Changes the Dock icon while Strata is open. macOS keeps showing the app file's own icon when it's closed.").font(.callout).foregroundStyle(.secondary)
+                SettingNote("Changes the Dock icon while Strata is open. macOS keeps showing the app file's own icon when it's closed.")
             }
-            Section("Lists") {
-                Picker("Songs layout", selection: $songsLayout) { Text("Table").tag("table"); Text("List").tag("list") }.pickerStyle(.segmented)
-                HStack { Text("Cover size in lists"); Slider(value: $listCover, in: 24...60, step: 2); Text("\(Int(listCover))").monospacedDigit().frame(width: 40, alignment: .trailing) }
-            }
-            Section("Performance") {
-                Picker("Animated effects", selection: $effects) { Text("Full").tag("full"); Text("Light").tag("light") }.pickerStyle(.segmented)
-                Text("Light turns off the falling seasonal effect. It is also off automatically in Low Power Mode and while the window is hidden.").font(.callout).foregroundStyle(.secondary)
-            }
-            Section("Seasons") {
-                Picker("Falling effect", selection: Binding(get: { season.isEmpty ? (legacyLeaves ? "autumn" : "off") : season }, set: { season = $0 })) {
-                    ForEach(Season.allCases) { Text($0.label).tag($0.rawValue) }
-                }
-                Text("Always behind the text, never in front of it. Turned off while macOS Reduce Motion is on.").font(.callout).foregroundStyle(.secondary)
+            Section {
+                ResetButton(title: "Reset colours, glass and lists", keys: ["accentMode", "accentHex", "bgStyle", "glassTint", "barRadius", "listCover", "season", "songsLayout", "effects"]) { Player.shared.refreshAccent() }
             }
         }
         .groupedForm().settingsPage()

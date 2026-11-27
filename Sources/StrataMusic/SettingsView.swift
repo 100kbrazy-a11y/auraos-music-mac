@@ -1,37 +1,20 @@
 import SwiftUI
 import AppKit
 
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
-            LookSettings().tabItem { Label("Look", systemImage: "paintpalette") }
-            PlaybackSettings().tabItem { Label("Playback", systemImage: "speaker.wave.2") }
-            DownloadSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
-            DiscordSettings().tabItem { Label("Discord", systemImage: "gamecontroller") }
-            SyncSettings().tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
-            AdvancedSettings().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
-            UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
-        }
-        .frame(width: 540, height: 430)
-    }
-}
-
 struct GeneralSettings: View {
     @EnvironmentObject var lib: Library
     @AppStorage("liveYt") private var liveYt = true
     @AppStorage("homeReleases") private var homeReleases = true
+    @AppStorage("resumeLast") private var resumeLast = true
     @AppStorage("menuBar") private var menuBar = true
+    @AppStorage("menuLyrics") private var menuLyrics = true
     @AppStorage("miniOnTop") private var miniOnTop = true
     @AppStorage("notifySong") private var notifySong = false
-    @AppStorage("menuLyrics") private var menuLyrics = true
-    @AppStorage("censorLyrics") private var censorLyrics = false
-    @AppStorage("lyricsWords") private var lyricsWords = true
 
     var body: some View {
         Form {
-            Section("Music") {
-                if lib.folders.isEmpty { Text("No folders yet. Add one to keep it up to date.").foregroundStyle(.secondary) }
+            Section("Music library") {
+                if lib.folders.isEmpty { SettingNote("No folders yet. Add one to keep it up to date.") }
                 ForEach(lib.folders, id: \.self) { f in
                     HStack {
                         Image(systemName: "folder"); Text(f).lineLimit(1).truncationMode(.middle)
@@ -42,6 +25,7 @@ struct GeneralSettings: View {
                 HStack {
                     Button("Add Music…") { lib.pickMusic() }
                     Button("Rescan") { lib.rescan() }
+                    Spacer()
                     Text("\(lib.songs.count) songs").foregroundStyle(.secondary)
                     if !lib.status.isEmpty { Text(lib.status).foregroundStyle(.secondary).lineLimit(1) }
                 }
@@ -49,22 +33,24 @@ struct GeneralSettings: View {
                     Button("Find Missing Covers") { lib.findMissingCovers() }
                     Button("Bring Over from Music…") { lib.importAppleMusic() }
                 }
-                Text("The music folders are watched: songs you add or remove show up by themselves.").font(.callout).foregroundStyle(.secondary)
+                SettingNote("The music folders are watched: songs you add or remove show up by themselves.")
             }
-            Section("Player") {
-                Toggle("Show YouTube results while I type in search", isOn: $liveYt)
-                Toggle("Look for new releases from my artists (weekly)", isOn: $homeReleases)
-                Toggle("Show the player in the menu bar", isOn: $menuBar)
-                Toggle("Show the current lyric in the menu bar player", isOn: $menuLyrics)
-                Toggle("Light up lyrics word by word", isOn: $lyricsWords)
-                Toggle("Hide bad words in lyrics", isOn: $censorLyrics)
-                Toggle("Keep the mini player above other windows", isOn: $miniOnTop)
-                Toggle("Show a notification when the song changes (while the app is in the background)", isOn: $notifySong)
+            Section("Startup") {
+                SettingToggle(title: "Pick up where I left off", help: "Opens with the last song loaded (paused) at the place you stopped.", isOn: $resumeLast)
+                SettingToggle(title: "Look for new releases from my artists", help: "Once a week, for the Home page.", isOn: $homeReleases)
+            }
+            Section("Search") {
+                SettingToggle(title: "Show YouTube results while I type in search", help: "Songs that aren't in your library can be played or downloaded from the search box.", isOn: $liveYt)
+            }
+            Section("Menu bar and windows") {
+                SettingToggle(title: "Show the player in the menu bar", isOn: $menuBar)
+                SettingToggle(title: "Show the current lyric in the menu bar player", isOn: $menuLyrics)
+                SettingToggle(title: "Keep the mini player above other windows", isOn: $miniOnTop)
+                SettingToggle(title: "Show a notification when the song changes", help: "Only while the app is in the background.", isOn: $notifySong)
                     .onChange(of: notifySong) { on in if on { Notifier.authorize() } }
             }
-            WordSyncSection()
             Section("Opus and Ogg files") {
-                Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
+                SettingNote("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.")
             }
         }
         .groupedForm(clearBackground: true).settingsPage()
@@ -77,36 +63,36 @@ struct PlaybackSettings: View {
     @AppStorage("eqPreset") private var preset = "Flat"
     @AppStorage("levelVolume") private var level = true
     @AppStorage("pitchFollowsSpeed") private var pitchFollows = true
+    @AppStorage("prevRestart") private var prevRestart = 3.0
     @ObservedObject private var outputs = AudioOutputs.shared
     @State private var gains: [Double] = (UserDefaults.standard.array(forKey: "eqGains") as? [Double]) ?? Array(repeating: 0, count: 10)
     private let labels = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
 
     var body: some View {
         Form {
-            Section {
+            Section("Engine") {
                 Picker("Playback engine", selection: $enhanced) {
                     Text("Standard").tag(false)
                     Text("Enhanced (new)").tag(true)
                 }
                 .pickerStyle(.segmented)
-                Text(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
-                    .font(.callout).foregroundStyle(.secondary)
+                SettingNote(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
             }
             Section("Speed") {
-                Toggle("Pitch follows speed", isOn: $pitchFollows)
-                Text(pitchFollows ? "Speeding a song up makes it higher and slowing it down makes it lower, like a record (2× is an octave up). Turn this off to change the speed without changing the pitch." : "The speed changes and the pitch stays the same. Turn this on to make sped-up songs higher and slowed-down songs lower.")
-                    .font(.callout).foregroundStyle(.secondary)
+                SettingToggle(title: "Pitch follows speed", help: pitchFollows ? "Speeding a song up makes it higher and slowing it down makes it lower, like a record (2× is an octave up). Turn this off to change the speed without changing the pitch." : "The speed changes and the pitch stays the same. Turn this on to make sped-up songs higher and slowed-down songs lower.", isOn: $pitchFollows)
+            }
+            Section("Buttons") {
+                SliderRow(title: "Previous button restarts the song after", help: "Press it later than this and it goes back to the start; sooner and it goes to the song before. 0 always goes back a song.", value: $prevRestart, range: 0...10, step: 1, standard: 3, unit: " s")
             }
             Section("Sound") {
-                Toggle("Level the volume between songs", isOn: $level)
-                Text("Each song is measured once, then played at a common level so a quiet song isn't followed by a loud one. The standard engine can only turn loud songs down; the enhanced engine can also lift quiet ones a little.").font(.callout).foregroundStyle(.secondary)
+                SettingToggle(title: "Level the volume between songs", help: "Each song is measured once, then played at a common level so a quiet song isn't followed by a loud one. The standard engine can only turn loud songs down; the enhanced engine can also lift quiet ones a little.", isOn: $level)
                 Picker("Output", selection: $outputs.selected) {
                     Text("System Default").tag("")
                     ForEach(outputs.devices) { Text($0.name).tag($0.uid) }
                 }
             }
             Section("Enhanced engine") {
-                HStack { Text("Crossfade"); Slider(value: $crossfade, in: 0...12, step: 1); Text(crossfade == 0 ? "Off" : "\(Int(crossfade)) s").monospacedDigit().frame(width: 36, alignment: .trailing) }
+                SliderRow(title: "Crossfade", help: "The end of one song fades into the start of the next.", value: $crossfade, range: 0...12, step: 1, standard: 0, unit: " s")
                 Picker("Equaliser", selection: $preset) {
                     ForEach(GaplessEngine.presets, id: \.0) { Text($0.0).tag($0.0) }
                     Text("Custom").tag("Custom")

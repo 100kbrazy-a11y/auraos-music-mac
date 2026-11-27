@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.4.0",
+   "name": "The Macster Update",
+   "date": "2026-11-27",
+   "notes": [
+    "Settings is rebuilt: a bigger window with a sidebar of pages (General, Look, Player, Visualizer, Lyrics, Playback, Downloads, Sync, Discord, Updates, Advanced), every row laid out the same way, and a reset button for each group.",
+    "Visualizer page: height, position (bottom, middle or top), distance from the edge, space at the sides, number of bars, gap, rounded ends, colour (accent, white or rainbow), strength and sensitivity, and which player pages show it.",
+    "Lyrics page: text size, space between lines, width, where the sung line sits, how dim the other lines are, and how much the wheel curves.",
+    "Player page: cover size, corner roundness, shadow strength, shrink-when-paused, title size, show the album name, hide the tab pill, and the media bar's width, cover size and distance from the bottom.",
+    "Playback and General: the Previous button's restart time, and a switch for picking up where you left off at startup."
+   ]
+  },
+  {
    "version": "3.3.1",
    "name": "The Macster Update",
    "date": "2026-11-27",

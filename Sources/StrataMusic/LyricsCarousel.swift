@@ -89,16 +89,18 @@ struct CarouselEffect: ViewModifier, Animatable {
     var index: Double
     var focus: Double
     var lit = false           // a line being sung is drawn as if it were the focus, even when it isn't the one the wheel is turned to
+    var floor = 0.16          // how bright the lines far from the sung one stay (Settings > Lyrics)
+    var curve = 1.0           // how much the wheel curves and shrinks away from the sung line
     var animatableData: Double { get { focus } set { focus = newValue } }
 
     func body(content: Content) -> some View {
         let d = lit ? 0 : index - focus
         let a = min(abs(d), 4)
         return content
-            .scaleEffect(1 - a * 0.03, anchor: .leading)
-            .rotation3DEffect(.degrees(max(-3, min(3, d)) * -3), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.5)
-            .offset(x: -(1 - cos(a * 0.5)) * 64)
-            .opacity(0.16 + 0.84 * exp(-a * 0.9))
+            .scaleEffect(1 - a * 0.03 * curve, anchor: .leading)
+            .rotation3DEffect(.degrees(max(-3, min(3, d)) * -3 * curve), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.5)
+            .offset(x: -(1 - cos(a * 0.5)) * 64 * curve)
+            .opacity(floor + (1 - floor) * exp(-a * 0.9))
     }
 }
 

@@ -16,6 +16,7 @@ struct FullPlayerView: View {
     @State private var hoverClose = false
     @State private var isFull = false
     @AppStorage("playerPages") private var pageOrder = "0,1,2"
+    @AppStorage("showPill") private var showPill = true
 
     init(close: @escaping () -> Void) {
         self.close = close
@@ -107,10 +108,7 @@ struct FullPlayerView: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
 
-            VStack {
-                Spacer()
-                SpectrumView(height: 110).opacity(page == 0 ? 0.25 : 0.55).padding(.horizontal, 40).padding(.bottom, 80)
-            }.allowsHitTesting(false)
+            SpectrumLayer(page: page)
 
             // drag the top of the player down to close it
             VStack { Color.clear.frame(height: 36).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { if $0.translation.height > 100 { close() } }); Spacer() }
@@ -130,7 +128,7 @@ struct FullPlayerView: View {
                 // title-bar strip (that strip drags the window and swallows clicks)
                 .padding(.horizontal, 20).padding(.top, isFull ? 20 : 44)
                 Spacer()
-                TabPill(page: $page)
+                if showPill { TabPill(page: $page) }
             }
             // Esc closes the player
             Button("Close", action: close).keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
@@ -287,6 +285,11 @@ struct SongPage: View {
     @AppStorage("playerCover") private var coverScale = 1.0
     @AppStorage("coverShape") private var coverShape = "rounded"
     @AppStorage("coverShadow") private var coverShadow = true
+    @AppStorage("coverRadius") private var coverRadius = 24.0
+    @AppStorage("coverShadowAmount") private var shadowAmount = 1.0
+    @AppStorage("coverPauseShrink") private var pauseShrink = true
+    @AppStorage("titleSize") private var titleSize = 30.0
+    @AppStorage("showAlbum") private var showAlbum = true
 
     var body: some View {
         if let s = player.current {
@@ -295,9 +298,9 @@ struct SongPage: View {
                 let side = max(200, min(g.size.height - 240, g.size.width * 0.44, 620))
                 let cover = side * CGFloat(coverScale)
                 HStack(spacing: 0) {
-                    CoverView(song: s, size: cover, radius: coverShape == "circle" ? cover / 2 : (coverShape == "square" ? 4 : 24))
-                        .shadow(color: .black.opacity(coverShadow ? 0.5 : 0), radius: 40, y: 22)
-                        .scaleEffect(player.isPlaying ? 1 : 0.93)
+                    CoverView(song: s, size: cover, radius: coverShape == "circle" ? cover / 2 : (coverShape == "square" ? 4 : CGFloat(coverRadius)))
+                        .shadow(color: .black.opacity(coverShadow ? 0.5 * shadowAmount : 0), radius: 40, y: 22)
+                        .scaleEffect(player.isPlaying || !pauseShrink ? 1 : 0.93)
                         .animation(.spring(response: 0.5, dampingFraction: 0.75), value: player.isPlaying)
                         .frame(width: side, height: side)
                         .padding(.leading, 64)
@@ -315,9 +318,9 @@ struct SongPage: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(s.title).font(.system(size: 30, weight: .heavy)).lineLimit(2)
+                    Text(s.title).font(.system(size: CGFloat(titleSize), weight: .heavy)).lineLimit(2)
                     Text(s.shownArtist).font(.system(size: 20, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
-                    if !s.album.isEmpty { Text(s.album).font(.system(size: 14)).foregroundStyle(.white.opacity(0.5)).lineLimit(1) }
+                    if showAlbum && !s.album.isEmpty { Text(s.album).font(.system(size: 14)).foregroundStyle(.white.opacity(0.5)).lineLimit(1) }
                 }
                 Spacer()
                 Button { lib.toggleFav(s) } label: {
@@ -434,6 +437,12 @@ struct SyncedLyrics: View {
     @AppStorage("lyricsWords") private var wordMode = true
     @AppStorage("lyricsRomanize") private var romanize = false
     @AppStorage("lyricsTranslate") private var translate = false
+    @AppStorage("lyricsSize") private var fontSize = 34.0
+    @AppStorage("lyricsSpacing") private var lineSpacing = 14.0
+    @AppStorage("lyricsWidth") private var textWidth = 720.0
+    @AppStorage("lyricsAnchor") private var anchor = 0.35
+    @AppStorage("lyricsFloor") private var dimFloor = 0.16
+    @AppStorage("lyricsCurve") private var curve = 1.0
     @State private var st = LyricFocus()
     @State private var focus = 0.0
 
@@ -443,7 +452,7 @@ struct SyncedLyrics: View {
         let gaps = store.gaps(duration: duration)
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: CGFloat(lineSpacing)) {
                     Color.clear.frame(height: 120)
                     ForEach(store.lines) { l in
                         if let g = gaps[l.id] { gapRow(g, id: l.id) }
@@ -452,7 +461,7 @@ struct SyncedLyrics: View {
                     if let g = gaps[store.lines.count] { gapRow(g, id: store.lines.count) }
                     Color.clear.frame(height: 220)
                 }
-                .frame(maxWidth: 720)
+                .frame(maxWidth: CGFloat(textWidth))
                 .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity)
             }
@@ -464,7 +473,7 @@ struct SyncedLyrics: View {
             .onChange(of: st) { f in
                 // the wheel turns with a little bounce, and the page follows it
                 withAnimation(.spring(response: 0.62, dampingFraction: 0.62)) { focus = f.target }
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { proxy.scrollTo(f.scrollID, anchor: UnitPoint(x: 0.5, y: 0.35)) }
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { proxy.scrollTo(f.scrollID, anchor: UnitPoint(x: 0.5, y: anchor)) }
             }
         }
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
@@ -473,7 +482,7 @@ struct SyncedLyrics: View {
     private func gapRow(_ g: ClosedRange<Double>, id: Int) -> some View {
         GapDots(range: g, clock: clock, offset: store.offset, live: st.gap == id, playing: player.isPlaying)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(CarouselEffect(index: Double(id) - 0.5, focus: focus, lit: st.gap == id))
+            .modifier(CarouselEffect(index: Double(id) - 0.5, focus: focus, lit: st.gap == id, floor: dimFloor, curve: curve))
             .id(1000 + id)
     }
 
@@ -481,18 +490,18 @@ struct SyncedLyrics: View {
         let on = st.lit(l.id)
         return VStack(alignment: .leading, spacing: 4) {
             if on && wordMode && !l.words.isEmpty {
-                LiveLine(line: l, clock: clock, offset: store.offset, size: 34, playing: player.isPlaying)
-                    .font(.system(size: 34, weight: .heavy))
+                LiveLine(line: l, clock: clock, offset: store.offset, size: CGFloat(fontSize), playing: player.isPlaying)
+                    .font(.system(size: CGFloat(fontSize), weight: .heavy))
             } else {
-                LyricLineText(line: l, t: 0, active: false, words: false).font(.system(size: 34, weight: .heavy))
+                LyricLineText(line: l, t: 0, active: false, words: false).font(.system(size: CGFloat(fontSize), weight: .heavy))
                     .foregroundStyle(Color.white)
             }
-            if romanize, let r = LyricsFilter.romanize(l.text) { Text(LyricsFilter.clean(r)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
-            if translate, let tr = store.translated[l.id] { Text(LyricsFilter.clean(tr)).font(.system(size: 19, weight: .semibold)).opacity(0.75) }
+            if romanize, let r = LyricsFilter.romanize(l.text) { Text(LyricsFilter.clean(r)).font(.system(size: CGFloat(fontSize) * 0.56, weight: .semibold)).opacity(0.75) }
+            if translate, let tr = store.translated[l.id] { Text(LyricsFilter.clean(tr)).font(.system(size: CGFloat(fontSize) * 0.56, weight: .semibold)).opacity(0.75) }
         }
         .foregroundStyle(Color.white)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(CarouselEffect(index: Double(l.id), focus: focus, lit: on))
+        .modifier(CarouselEffect(index: Double(l.id), focus: focus, lit: on, floor: dimFloor, curve: curve))
         .contentShape(Rectangle())
         .onTapGesture { player.seek(to: l.time + store.offset) }
         .id(l.id)

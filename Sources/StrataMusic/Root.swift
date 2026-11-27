@@ -739,13 +739,16 @@ struct NowPlayingBar: View {
     @AppStorage("barCompact") private var compact = false
     @AppStorage("barHeart") private var showHeart = true
     @AppStorage("barQueue") private var showQueue = true
+    @AppStorage("barWidth") private var barWidth = 720.0
+    @AppStorage("barCover") private var barCover = 46.0
+    @AppStorage("barBottom") private var barBottom = 14.0
     var open: () -> Void
 
     var body: some View {
         if let s = player.current {
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
-                    CoverView(song: s, size: compact ? 36 : 46, radius: compact ? 8 : 10)
+                    CoverView(song: s, size: CGFloat(compact ? barCover * 0.78 : barCover), radius: compact ? 8 : 10)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                         Text(s.shownArtist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
@@ -763,11 +766,11 @@ struct NowPlayingBar: View {
                 .padding(.horizontal, 14).padding(.top, compact ? 7 : 9).padding(.bottom, compact ? 7 : 4)
                 if !compact { SeekBar(clock: player.clock, duration: s.duration) { player.seek(to: $0) }.padding(.horizontal, 16).padding(.bottom, 4) }
             }
-            .frame(maxWidth: compact ? 560 : 720)
+            .frame(maxWidth: CGFloat(compact ? min(560, barWidth) : barWidth))
             .glass(CGFloat(barRadius), tint: glassTint > 0.01 ? player.accent.opacity(glassTint) : nil)
             .contentShape(RoundedRectangle(cornerRadius: CGFloat(barRadius), style: .continuous))
             .onTapGesture(perform: open)
-            .padding(.horizontal, 18).padding(.bottom, 14)
+            .padding(.horizontal, 18).padding(.bottom, CGFloat(barBottom))
             .frame(maxWidth: .infinity)
         }
     }

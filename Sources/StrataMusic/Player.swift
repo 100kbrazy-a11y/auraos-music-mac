@@ -90,7 +90,8 @@ final class Player: ObservableObject {
 
     /// at launch: the song that was playing last time, paused where it stopped
     func restoreLast(_ lib: Library) {
-        guard current == nil, let id = UserDefaults.standard.string(forKey: "lastSong"), let s = lib.byID[id] else { return }
+        guard current == nil, UserDefaults.standard.object(forKey: "resumeLast") as? Bool ?? true,
+              let id = UserDefaults.standard.string(forKey: "lastSong"), let s = lib.byID[id] else { return }
         baseQueue = [s]; queue = [s]; index = 0
         load(s, autoplay: false)
         let pos = UserDefaults.standard.double(forKey: "lastPosition")
@@ -379,7 +380,9 @@ final class Player: ObservableObject {
 
     func previous() {
         guard !queue.isEmpty else { return }
-        if clock.position > 3 || index == 0 { seek(to: 0); return }
+        // Settings > Playback > Previous button: after this many seconds it restarts the song instead (0: always goes back a song)
+        let restartAfter = UserDefaults.standard.object(forKey: "prevRestart") as? Double ?? 3
+        if (restartAfter > 0 && clock.position > restartAfter) || index == 0 { seek(to: 0); return }
         index -= 1
         load(queue[index], autoplay: true)
     }
