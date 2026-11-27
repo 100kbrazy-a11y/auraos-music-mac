@@ -12,8 +12,8 @@ struct GeneralSettings: View {
     @AppStorage("notifySong") private var notifySong = false
 
     var body: some View {
-        Form {
-            Section("Music library") {
+        SettingsPage {
+            SettingsGroup("Music library", footer: "The music folders are watched: songs you add or remove show up by themselves.") {
                 if lib.folders.isEmpty { SettingNote("No folders yet. Add one to keep it up to date.") }
                 ForEach(lib.folders, id: \.self) { f in
                     HStack {
@@ -25,35 +25,32 @@ struct GeneralSettings: View {
                 HStack {
                     Button("Add Music…") { lib.pickMusic() }
                     Button("Rescan") { lib.rescan() }
-                    Spacer()
-                    Text("\(lib.songs.count) songs").foregroundStyle(.secondary)
-                    if !lib.status.isEmpty { Text(lib.status).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                HStack {
                     Button("Find Missing Covers") { lib.findMissingCovers() }
                     Button("Bring Over from Music…") { lib.importAppleMusic() }
                 }
-                SettingNote("The music folders are watched: songs you add or remove show up by themselves.")
+                HStack {
+                    Text("\(lib.songs.count) songs").foregroundStyle(.secondary)
+                    if !lib.status.isEmpty { Text(lib.status).foregroundStyle(.secondary).lineLimit(1) }
+                }
             }
-            Section("Startup") {
+            SettingsGroup("Startup") {
                 SettingToggle(title: "Pick up where I left off", help: "Opens with the last song loaded (paused) at the place you stopped.", isOn: $resumeLast)
                 SettingToggle(title: "Look for new releases from my artists", help: "Once a week, for the Home page.", isOn: $homeReleases)
             }
-            Section("Search") {
-                SettingToggle(title: "Show YouTube results while I type in search", help: "Songs that aren't in your library can be played or downloaded from the search box.", isOn: $liveYt)
+            SettingsGroup("Search") {
+                SettingToggle(title: "Show YouTube results while I type", help: "Songs that aren't in your library can be played or downloaded from the search box.", isOn: $liveYt)
             }
-            Section("Menu bar and windows") {
+            SettingsGroup("Menu bar and windows") {
                 SettingToggle(title: "Show the player in the menu bar", isOn: $menuBar)
                 SettingToggle(title: "Show the current lyric in the menu bar player", isOn: $menuLyrics)
                 SettingToggle(title: "Keep the mini player above other windows", isOn: $miniOnTop)
                 SettingToggle(title: "Show a notification when the song changes", help: "Only while the app is in the background.", isOn: $notifySong)
                     .onChange(of: notifySong) { on in if on { Notifier.authorize() } }
             }
-            Section("Opus and Ogg files") {
+            SettingsGroup("Opus and Ogg files") {
                 SettingNote("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.")
             }
         }
-        .groupedForm(clearBackground: true).settingsPage()
     }
 }
 
@@ -69,31 +66,30 @@ struct PlaybackSettings: View {
     private let labels = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
 
     var body: some View {
-        Form {
-            Section("Engine") {
-                Picker("Playback engine", selection: $enhanced) {
-                    Text("Standard").tag(false)
-                    Text("Enhanced (new)").tag(true)
+        SettingsPage {
+            SettingsGroup("Engine", footer: enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.") {
+                SettingRow("Playback engine") {
+                    Picker("", selection: $enhanced) {
+                        Text("Standard").tag(false)
+                        Text("Enhanced (new)").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 260)
                 }
-                .pickerStyle(.segmented)
-                SettingNote(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
             }
-            Section("Speed") {
+            SettingsGroup("Speed and buttons") {
                 SettingToggle(title: "Pitch follows speed", help: pitchFollows ? "Speeding a song up makes it higher and slowing it down makes it lower, like a record (2× is an octave up). Turn this off to change the speed without changing the pitch." : "The speed changes and the pitch stays the same. Turn this on to make sped-up songs higher and slowed-down songs lower.", isOn: $pitchFollows)
-            }
-            Section("Buttons") {
                 SliderRow(title: "Previous button restarts the song after", help: "Press it later than this and it goes back to the start; sooner and it goes to the song before. 0 always goes back a song.", value: $prevRestart, range: 0...10, step: 1, standard: 3, unit: " s")
             }
-            Section("Sound") {
+            SettingsGroup("Sound") {
                 SettingToggle(title: "Level the volume between songs", help: "Each song is measured once, then played at a common level so a quiet song isn't followed by a loud one. The standard engine can only turn loud songs down; the enhanced engine can also lift quiet ones a little.", isOn: $level)
-                Picker("Output", selection: $outputs.selected) {
+                SettingMenu("Output", selection: $outputs.selected) {
                     Text("System Default").tag("")
                     ForEach(outputs.devices) { Text($0.name).tag($0.uid) }
                 }
             }
-            Section("Enhanced engine") {
+            SettingsGroup("Enhanced engine", footer: enhanced ? nil : "Turn on the Enhanced engine above to use these.") {
                 SliderRow(title: "Crossfade", help: "The end of one song fades into the start of the next.", value: $crossfade, range: 0...12, step: 1, standard: 0, unit: " s")
-                Picker("Equaliser", selection: $preset) {
+                SettingMenu("Equaliser", selection: $preset) {
                     ForEach(GaplessEngine.presets, id: \.0) { Text($0.0).tag($0.0) }
                     Text("Custom").tag("Custom")
                 }
@@ -103,12 +99,12 @@ struct PlaybackSettings: View {
                             Slider(value: Binding(get: { shown(i) }, set: { v in setGain(i, v) }), in: -12...12).rotationEffect(.degrees(-90)).frame(width: 90, height: 90).frame(width: 22, height: 96)
                             Text(labels[i]).font(.system(size: 9)).foregroundStyle(.secondary)
                         }
+                        .frame(maxWidth: .infinity)
                     }
-                }.frame(maxWidth: .infinity).padding(.top, 4)
+                }.padding(.top, 4)
             }
             .disabled(!enhanced)
         }
-        .groupedForm(clearBackground: true).settingsPage()
         .onChange(of: level) { _ in Player.shared.refreshAnalysis() }
         .onChange(of: pitchFollows) { _ in Player.shared.applySpeedMode() }
         .onChange(of: enhanced) { _ in Player.shared.applyAudioSettings() }
@@ -134,25 +130,22 @@ struct DownloadSettings: View {
     @State private var folder = Downloads.folder
 
     var body: some View {
-        Form {
-            Section {
-                CompatLabeled("Save songs in") {
+        SettingsPage {
+            SettingsGroup("Saving", footer: "Songs from YouTube are saved as M4A (AAC) files with their title, artist, album and cover, then added to your library. Search and download from the YouTube page in the sidebar, or from the search box when a song isn't in your library.") {
+                SettingRow("Save songs in") {
                     HStack {
-                        Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                        Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary).frame(maxWidth: 220, alignment: .trailing)
                         Button("Choose…") { choose() }
                         Button { NSWorkspace.shared.open(folder) } label: { Image(systemName: "arrow.up.forward.square") }.help("Show in Finder")
                     }
                 }
-                Stepper("Songs downloading at once: \(parallel)", value: $parallel, in: 1...4)
-            } footer: {
-                Text("Songs from YouTube are saved as M4A (AAC) files with their title, artist, album and cover, then added to your library. Search and download from the YouTube page in the sidebar, or from the search box when a song isn't in your library.")
+                SettingRow("Songs downloading at once") { Stepper("\(parallel)", value: $parallel, in: 1...4) }
             }
-            Section("Now") {
-                CompatLabeled("Downloading", value: "\(Downloads.shared.active)")
-                Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true) }
+            SettingsGroup("Now") {
+                SettingValue("Downloading", "\(Downloads.shared.active)")
+                HStack { Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true) }; Spacer() }
             }
         }
-        .groupedForm(clearBackground: true).settingsPage()
     }
 
     private func choose() {
@@ -170,23 +163,20 @@ struct DiscordSettings: View {
     @AppStorage("discordTimeline") private var timeline = true
 
     var body: some View {
-        Form {
-            Section {
+        SettingsPage {
+            SettingsGroup("Rich Presence", footer: "This talks to the Discord app on this Mac, the same way its own Rich Presence does: no sign-in, no token. Keep Discord open, and turn on Settings › Activity Privacy › Share my activity in Discord.") {
                 HStack(spacing: 8) {
                     Circle().fill(!on ? Color.gray : status.hasPrefix("Discord isn't") ? Color.orange : Color.green).frame(width: 9, height: 9)
                     Text(on ? status : "Off").foregroundStyle(.secondary).lineLimit(1)
                     Spacer()
                     Button("Test") { Discord.shared.test() }.disabled(!on)
                 }
-                Toggle("Show what I'm listening to on Discord", isOn: $on)
-                Toggle("Show the album cover", isOn: $cover)
-                Toggle("Show the song's progress", isOn: $timeline)
-                Toggle("Clear my status while music is paused", isOn: $hidePaused)
-            } footer: {
-                Text("This talks to the Discord app on this Mac, the same way its own Rich Presence does: no sign-in, no token. Keep Discord open, and turn on Settings › Activity Privacy › Share my activity in Discord.")
+                SettingToggle(title: "Show what I'm listening to on Discord", isOn: $on)
+                SettingToggle(title: "Show the album cover", isOn: $cover)
+                SettingToggle(title: "Show the song's progress", isOn: $timeline)
+                SettingToggle(title: "Clear my status while music is paused", isOn: $hidePaused)
             }
         }
-        .groupedForm(clearBackground: true).settingsPage()
         .onReceive(NotificationCenter.default.publisher(for: Discord.statusChanged)) { _ in status = Discord.shared.status }
         .onChange(of: on) { _ in Player.shared.refreshDiscord() }
         .onChange(of: cover) { _ in Player.shared.refreshDiscord() }
@@ -200,21 +190,21 @@ struct UpdateSettings: View {
     @AppStorage("autoUpdate") private var auto = true
 
     var body: some View {
-        Form {
-            Section {
-                CompatLabeled("Version", value: Updater.current)
-                Toggle("Check for updates when the app opens", isOn: $auto)
+        SettingsPage {
+            SettingsGroup("Strata Music") {
+                SettingValue("Version", Updater.current)
+                SettingToggle(title: "Check for updates when the app opens", isOn: $auto)
                 HStack {
                     Button("Check Now") { Task { await updater.check() } }.disabled(updater.busy)
                     if let r = updater.available { Button("Update to \(r.version)") { Task { await updater.install() } }.disabled(updater.busy) }
                     if updater.busy { ProgressView().controlSize(.small) }
+                    Spacer()
                 }
                 if !updater.status.isEmpty { Text(updater.status).foregroundStyle(.secondary) }
             }
             if let r = updater.available, let b = r.body, !b.isEmpty {
-                Section("What's new in \(r.version)") { Text(b).font(.callout).textSelection(.enabled) }
+                SettingsGroup("What's new in \(r.version)") { Text(b).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
             }
         }
-        .groupedForm(clearBackground: true).settingsPage()
     }
 }

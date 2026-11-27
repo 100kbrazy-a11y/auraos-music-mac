@@ -2,6 +2,14 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.4.1",
+   "name": "The Macster Update",
+   "date": "2026-11-27",
+   "notes": [
+    "Settings pages fixed: on macOS 12 some pages ran wider than the window and the sidebar and the rows were cut off. Every page is now built the same way on every macOS: a title, then cards, and in each card the name on the left and the control on the right, with the same spacing everywhere."
+   ]
+  },
+  {
    "version": "3.4.0",
    "name": "The Macster Update",
    "date": "2026-11-27",

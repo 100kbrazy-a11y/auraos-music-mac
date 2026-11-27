@@ -241,8 +241,8 @@ struct SyncSettings: View {
     @ObservedObject var sync = Sync.shared
 
     var body: some View {
-        Form {
-            Section("Sync between your devices") {
+        SettingsPage {
+            SettingsGroup("Sync between your devices") {
                 if let f = sync.folder {
                     HStack { Image(systemName: "folder"); Text(f).lineLimit(1).truncationMode(.middle); Spacer() }
                     HStack {
@@ -259,6 +259,5 @@ struct SyncSettings: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
-        .groupedForm().settingsPage()
     }
 }

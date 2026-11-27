@@ -145,14 +145,14 @@ struct AdvancedSettings: View {
     @StateObject private var health = YtHealth()
 
     var body: some View {
-        Form {
-            Section("Shortcuts and scripts") {
+        SettingsPage {
+            SettingsGroup("Shortcuts and scripts") {
                 Text("Strata answers to strata:// links, so the Shortcuts app (Open URL), Raycast, Alfred and the Terminal can control it.")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("strata://toggle · play · pause · next · previous · like · shuffle · repeat\nstrata://play?q=song or artist\nstrata://playlist?name=Road Trip&shuffle=1\nstrata://volume?level=0.5")
                     .font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
             }
-            Section("YouTube") {
+            SettingsGroup("YouTube") {
                 HStack {
                     Button(health.running ? "Testing…" : "Test YouTube") { Task { await health.run() } }.disabled(health.running)
                     Button("Reset the YouTube page") { YtEngine.shared.reset(); log.add("Reset by you") }
@@ -169,7 +169,7 @@ struct AdvancedSettings: View {
                 }
                 Text("Search and downloads run through a hidden YouTube page. If they stop working, this shows which step fails. After three failures in a row the page resets itself.").font(.callout).foregroundStyle(.secondary)
             }
-            Section("Engine log") {
+            SettingsGroup("Engine log") {
                 ScrollView {
                     Text(log.lines.isEmpty ? "Nothing yet." : log.text).font(.system(size: 11, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                 }
@@ -182,7 +182,6 @@ struct AdvancedSettings: View {
                 }
             }
         }
-        .groupedForm().settingsPage()
     }
 }
 

@@ -88,13 +88,11 @@ struct WordSyncSection: View {
     @AppStorage("preciseSync") private var auto = true
 
     var body: some View {
-        Section("Word timing") {
-            Toggle("Time the words to the singing automatically", isOn: $auto)
-            Text("Strata listens to a song once (about as long as it takes to read the file), picks out the voice and lines each word up with it, so the lit word follows the singer and ad-libs don't cut a line short. It runs on your Mac, in the background, with nothing to download, and works best when the vocals are in the middle of the mix.")
-                .font(.callout).foregroundStyle(.secondary)
+        SettingsGroup("Word timing", footer: "Strata listens to a song once (about as long as it takes to read the file), picks out the voice and lines each word up with it, so the lit word follows the singer and ad-libs don't cut a line short. It runs on your Mac, in the background, with nothing to download, and works best when the vocals are in the middle of the mix.") {
+            SettingToggle(title: "Time the words to the singing automatically", isOn: $auto)
             if sync.busyID != nil { HStack { ProgressView(value: sync.progress).frame(maxWidth: .infinity); Text("Listening…").foregroundStyle(.secondary) } }
             if let e = sync.lastError { Text(e).font(.callout).foregroundStyle(.red) }
-            Button("Forget all word timings") { sync.forgetAll() }
+            HStack { Button("Forget all word timings") { sync.forgetAll() }; Spacer() }
         }
     }
 }

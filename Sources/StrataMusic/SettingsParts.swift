@@ -1,9 +1,67 @@
 import SwiftUI
 import AppKit
 
-// The building blocks of the Settings pages: one look for every row, so the pages line up.
+// The building blocks of the Settings pages. Nothing here uses Form: on macOS 12 a Form lines labels up in a column of its own and
+// takes the width of its longest line, which pushed the pages out of the window. These pages are plain stacks, so they look the
+// same on every macOS: a title, then cards, and in each card rows with the name on the left and the control on the right.
 
-/// a slider row: the name (with a line of explanation) on the left, the slider and its value on the right, and a reset arrow once it has been changed
+/// a scrolling page of cards
+struct SettingsPage<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder _ content: () -> Content) { self.content = content() }
+
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 20) { content }
+                .padding(.horizontal, 26).padding(.top, 6).padding(.bottom, 28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// one card: a small heading above it, the rows inside, and an optional note under it
+struct SettingsGroup<Content: View>: View {
+    let title: String?
+    let footer: String?
+    let content: Content
+    init(_ title: String? = nil, footer: String? = nil, @ViewBuilder _ content: () -> Content) {
+        self.title = title; self.footer = footer; self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let t = title { Text(t).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4) }
+            VStack(alignment: .leading, spacing: 14) { content }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)))
+            if let f = footer { SettingNote(f).padding(.horizontal, 4) }
+        }
+    }
+}
+
+/// a row: the name (and a line of explanation) on the left, the control on the right
+struct SettingRow<Control: View>: View {
+    let title: String
+    let help: String?
+    let control: Control
+    init(_ title: String, help: String? = nil, @ViewBuilder control: () -> Control) {
+        self.title = title; self.help = help; self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let h = help { Text(h).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            control.layoutPriority(1)
+        }
+    }
+}
+
+/// a slider row: the slider and its value on the right, and a reset arrow once it has been changed
 struct SliderRow: View {
     let title: String
     var help: String? = nil
@@ -25,37 +83,31 @@ struct SliderRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if let h = help { Text(h).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        SettingRow(title, help: help) {
+            HStack(spacing: 8) {
+                slider.frame(width: 190)
+                Text(shown).monospacedDigit().foregroundStyle(.secondary).frame(width: 58, alignment: .trailing)
+                Button { value = standard } label: { Image(systemName: "arrow.counterclockwise") }
+                    .buttonStyle(.borderless).help("Back to the usual setting")
+                    .opacity(abs(value - standard) > 0.0001 ? 1 : 0)
+                    .disabled(abs(value - standard) <= 0.0001)
             }
-            Spacer(minLength: 12)
-            slider.frame(width: 180)
-            Text(shown).monospacedDigit().foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
-            Button { value = standard } label: { Image(systemName: "arrow.counterclockwise") }
-                .buttonStyle(.borderless).help("Back to the usual setting")
-                .opacity(abs(value - standard) > 0.0001 ? 1 : 0)
-                .disabled(abs(value - standard) <= 0.0001)
         }
     }
 }
 
-/// a switch with an optional line of explanation under it
+/// a switch row
 struct SettingToggle: View {
     let title: String
     var help: String? = nil
     @Binding var isOn: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Toggle(title, isOn: $isOn)
-            if let h = help { Text(h).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-        }
+        SettingRow(title, help: help) { Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch) }
     }
 }
 
-/// a row of choices (segmented), with an optional line of explanation
+/// a row of choices (segmented)
 struct SettingChoice: View {
     let title: String
     var help: String? = nil
@@ -63,17 +115,42 @@ struct SettingChoice: View {
     let options: [(String, String)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Picker(title, selection: $selection) {
+        SettingRow(title, help: help) {
+            Picker("", selection: $selection) {
                 ForEach(options, id: \.0) { Text($0.1).tag($0.0) }
             }
-            .pickerStyle(.segmented)
-            if let h = help { Text(h).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            .pickerStyle(.segmented).labelsHidden()
+            .frame(width: min(330, CGFloat(options.count) * 100))
         }
     }
 }
 
-/// a line of small grey text for a section's footer or a note
+/// a row with a pop-up menu
+struct SettingMenu<Tag: Hashable, Options: View>: View {
+    let title: String
+    let help: String?
+    @Binding var selection: Tag
+    let options: Options
+    init(_ title: String, help: String? = nil, selection: Binding<Tag>, @ViewBuilder options: () -> Options) {
+        self.title = title; self.help = help; self._selection = selection; self.options = options()
+    }
+
+    var body: some View {
+        SettingRow(title, help: help) {
+            Picker("", selection: $selection) { options }.labelsHidden().frame(width: 220)
+        }
+    }
+}
+
+/// a row that just shows a value
+struct SettingValue: View {
+    let title: String
+    let value: String
+    init(_ title: String, _ value: String) { self.title = title; self.value = value }
+    var body: some View { SettingRow(title) { Text(value).foregroundStyle(.secondary) } }
+}
+
+/// a line of small grey text for a card's footer or a note
 struct SettingNote: View {
     let text: String
     init(_ text: String) { self.text = text }

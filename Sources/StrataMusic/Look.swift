@@ -217,8 +217,8 @@ struct LookSettings: View {
     private let swatches = ["#9E80FF", "#FF5E7E", "#FF8A3D", "#F5C542", "#4FD18B", "#3FC1E8", "#4C7DFF", "#C2C2CC"]
 
     var body: some View {
-        Form {
-            Section("Colours") {
+        SettingsPage {
+            SettingsGroup("Colours") {
                 SettingChoice(title: "Accent colour", selection: $accentMode, options: [("cover", "From the cover"), ("fixed", "Always the same")])
                     .onChange(of: accentMode) { _ in Player.shared.refreshAccent() }
                 if accentMode == "fixed" {
@@ -231,29 +231,29 @@ struct LookSettings: View {
                         ColorPicker("", selection: Binding(get: { Color(hex: accentHex) }, set: { accentHex = $0.hexString; Player.shared.refreshAccent() }), supportsOpacity: false).labelsHidden()
                     }
                 }
-                Picker("Player background", selection: $bgStyle) {
+                SettingMenu("Player background", selection: $bgStyle) {
                     Text("Aurora").tag("aurora")
                     Text("Blurred cover").tag("cover")
                     Text("Moving gradient").tag("gradient")
                     Text("Plain").tag("plain")
                 }
             }
-            Section("Glass") {
+            SettingsGroup("Glass") {
                 SliderRow(title: "Colour in the glass", value: $glassTint, range: 0...1, standard: 1, unit: "%", scale: 100)
                 SliderRow(title: "Media bar corners", value: $barRadius, range: 12...34, step: 1, standard: 26)
                 SettingNote("The glass look itself comes from macOS 26. On older macOS you get the frosted version.")
             }
-            Section("Seasons and effects") {
-                Picker("Falling effect", selection: Binding(get: { season.isEmpty ? (legacyLeaves ? "autumn" : "off") : season }, set: { season = $0 })) {
+            SettingsGroup("Seasons and effects") {
+                SettingMenu("Falling effect", selection: Binding(get: { season.isEmpty ? (legacyLeaves ? "autumn" : "off") : season }, set: { season = $0 })) {
                     ForEach(Season.allCases) { Text($0.label).tag($0.rawValue) }
                 }
                 SettingChoice(title: "Animated effects", help: "Light turns off the falling effect. It is also off in Low Power Mode, while the window is hidden, and while macOS Reduce Motion is on. It is always behind the text.", selection: $effects, options: [("full", "Full"), ("light", "Light")])
             }
-            Section("Lists") {
+            SettingsGroup("Lists") {
                 SettingChoice(title: "Songs layout", selection: $songsLayout, options: [("table", "Table"), ("list", "List")])
                 SliderRow(title: "Cover size in lists", value: $listCover, range: 24...60, step: 2, standard: 34, unit: " pt")
             }
-            Section("App icon") {
+            SettingsGroup("App icon") {
                 HStack(spacing: 10) {
                     ForEach(AppIcons.variants) { v in
                         VStack(spacing: 4) {
@@ -269,10 +269,9 @@ struct LookSettings: View {
                 }
                 SettingNote("Changes the Dock icon while Strata is open. macOS keeps showing the app file's own icon when it's closed.")
             }
-            Section {
+            SettingsGroup {
                 ResetButton(title: "Reset colours, glass and lists", keys: ["accentMode", "accentHex", "bgStyle", "glassTint", "barRadius", "listCover", "season", "songsLayout", "effects"]) { Player.shared.refreshAccent() }
             }
         }
-        .groupedForm().settingsPage()
     }
 }
