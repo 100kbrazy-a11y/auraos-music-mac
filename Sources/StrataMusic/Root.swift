@@ -495,7 +495,6 @@ struct SidebarView: View {
     @EnvironmentObject var updater: Updater
     @State private var renaming: Playlist?
     @State private var dropOn: String?
-    @State private var newName = ""
     @State private var editingSmart: SmartPlaylist?
 
     var body: some View {
@@ -542,7 +541,7 @@ struct SidebarView: View {
                             return true
                         }
                         .contextMenu {
-                            Button("Rename…") { newName = p.name; renaming = p }
+                            Button("Rename…") { renaming = p }
                             Button("Duplicate") { lib.duplicate(p) }
                             Button("Export as M3U…") { lib.exportM3U(p) }
                             Button("Delete", role: .destructive) { if nav == .playlist(p.id) { nav = .songs }; lib.deletePlaylist(p.id) }
@@ -574,11 +573,41 @@ struct SidebarView: View {
             }
         }
         .sheet(item: $editingSmart) { sp in SmartEditor(sp: sp, isNew: !lib.smart.contains { $0.id == sp.id }) }
-        .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Rename") { if let p = renaming { lib.rename(p.id, to: newName) }; renaming = nil }
-            Button("Cancel", role: .cancel) { renaming = nil }
+        // a sheet rather than an alert: the alert's Rename button could find "renaming" already cleared and do nothing
+        .sheet(item: $renaming) { RenamePlaylistSheet(playlist: $0) }
+    }
+}
+
+/// the window that asks for a playlist's new name
+struct RenamePlaylistSheet: View {
+    let playlist: Playlist
+    @State private var name: String
+    @EnvironmentObject var lib: Library
+    @Environment(\.dismiss) private var dismiss
+
+    init(playlist: Playlist) {
+        self.playlist = playlist
+        _name = State(initialValue: playlist.name)
+    }
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private func commit() {
+        if !trimmed.isEmpty { lib.rename(playlist.id, to: trimmed) }
+        dismiss()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Rename Playlist").font(.title2.weight(.bold))
+            TextField("Name", text: $name).onSubmit { commit() }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Rename") { commit() }.keyboardShortcut(.defaultAction).disabled(trimmed.isEmpty)
+            }
         }
+        .padding(22).frame(width: 380)
     }
 }
 

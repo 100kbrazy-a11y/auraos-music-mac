@@ -245,6 +245,13 @@ extension View {
         }
     }
 
+    /// makes a settings page scroll. On macOS 13 and later a grouped Form scrolls by itself; on macOS 12 a Form is a plain stack that
+    /// just runs off the bottom of the window, so there it goes in a ScrollView.
+    @ViewBuilder func settingsPage() -> some View {
+        if #available(macOS 13, *) { self }
+        else { ScrollView(.vertical) { self.padding(20) } }
+    }
+
     @ViewBuilder func columnsForm() -> some View {
         if #available(macOS 13, *) { self.formStyle(.columns) } else { self }
     }

@@ -2,6 +2,18 @@
  "format": "Newest first. Bump this file to ship an update: the first version here is built and published as mac-vX.Y.Z.",
  "releases": [
   {
+   "version": "3.3.0",
+   "name": "The Macster Update",
+   "date": "2026-11-27",
+   "notes": [
+    "Speed and pitch go together now: speeding a song up makes it higher and slowing it down makes it lower, like a record. Settings > Playback > Pitch follows speed turns this off if you'd rather change the speed alone.",
+    "Right-click and double-click work on the whole of a song row, not just on the words: every column of the songs table, the whole width of the list layout, album and artist pages, Replay and Up Next. Songs on album and artist pages get the full menu (Add to Playlist, Start Radio, Go to Artist and more).",
+    "Rename Playlist works: right-click a playlist in the sidebar, choose Rename, type the new name and press Return.",
+    "Settings pages scroll on macOS 12.",
+    "Full-screen player: swipe sideways with two fingers on the trackpad to go to the next or the previous page (Lyrics, Current Song, Artist)."
+   ]
+  },
+  {
    "version": "3.2.0",
    "name": "The Macster Update",
    "date": "2026-11-25",

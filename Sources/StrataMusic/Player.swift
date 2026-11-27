@@ -31,7 +31,15 @@ final class Player: ObservableObject {
     let vol = VolumeModel()
     var volume: Float { get { vol.value } set { vol.value = newValue; setOutVolume(newValue) } }
     /// 0.5x to 2x
-    @Published var speed: Float = 1 { didSet { clock.rate = isPlaying ? Double(speed) : 0; if #available(macOS 13, *) { avp.defaultRate = speed }; if isPlaying && !usingGE { avp.rate = speed }; ge?.setRate(speed); pushNowPlaying() } }
+    @Published var speed: Float = 1 { didSet { clock.rate = isPlaying ? Double(speed) : 0; if #available(macOS 13, *) { avp.defaultRate = speed }; applySpeedMode(); if isPlaying && !usingGE { avp.rate = speed }; pushNowPlaying() } }
+    /// Settings > Playback > "Pitch follows speed" (on by default): speeding a song up raises its pitch and slowing it down lowers it
+    private var pitchFollowsSpeed: Bool { UserDefaults.standard.object(forKey: "pitchFollowsSpeed") as? Bool ?? true }
+    private var pitchAlgorithm: AVAudioTimePitchAlgorithm { pitchFollowsSpeed ? .varispeed : .spectral }
+    /// pushes the speed and the "pitch follows speed" choice to whichever engine is playing (also called when the setting changes)
+    func applySpeedMode() {
+        ge?.setRate(speed, pitchFollows: pitchFollowsSpeed)
+        avp.currentItem?.audioTimePitchAlgorithm = pitchAlgorithm
+    }
     @Published private(set) var decoding = false
     /// the sleep timer: stops the music at [sleepEnd], or when the current song ends
     @Published private(set) var sleepEnd: Date?
@@ -245,7 +253,7 @@ final class Player: ObservableObject {
         g.onEnd = { [weak self] in self?.ended() }
         g.onAdvance = { [weak self] in self?.advanceGapless() }
         ge = g
-        g.setVolume(volume); g.setRate(speed); g.setLevel(levelDb)
+        g.setVolume(volume); g.setRate(speed, pitchFollows: pitchFollowsSpeed); g.setLevel(levelDb)
         if let d = AudioOutputs.shared.activeDevice { g.setOutputDevice(d.deviceID) }
         applyAudioSettings()
         return g
@@ -339,6 +347,7 @@ final class Player: ObservableObject {
         }
         usingGE = false; ge?.stopAll()
         let item = AVPlayerItem(url: url)
+        item.audioTimePitchAlgorithm = pitchAlgorithm
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.ended() }
         }

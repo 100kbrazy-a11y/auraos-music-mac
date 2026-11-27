@@ -573,6 +573,7 @@ struct ReplayView: View {
                             .background(i % 2 == 0 ? Color.white.opacity(0.04) : Color.clear)
                             .contentShape(Rectangle())
                             .onTapGesture(count: 2) { player.play(e.0, in: st.songs.map { $0.0 }) }
+                            .contextMenu { SongContextMenu(song: e.0, list: st.songs.map { $0.0 }, lib: lib, player: player) }
                         }
                     }.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     Text("Top artists").font(.title3.weight(.bold))

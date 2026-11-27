@@ -182,7 +182,7 @@ struct AdvancedSettings: View {
                 }
             }
         }
-        .groupedForm()
+        .groupedForm().settingsPage()
     }
 }
 

@@ -41,6 +41,11 @@ struct QueueView: View {
                                 .background(i == player.index ? Color.white.opacity(0.07) : Color.clear)
                                 .contentShape(Rectangle())
                                 .onTapGesture(count: 2) { player.jump(to: i) }
+                                .contextMenu {
+                                    Button("Play") { player.jump(to: i) }
+                                    if i != player.index { Button("Remove from Up Next") { player.removeFromQueue(i) } }
+                                    Button("Go to Artist") { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: s.artistKey)) }
+                                }
                                 .id(i)
                             }
                         }

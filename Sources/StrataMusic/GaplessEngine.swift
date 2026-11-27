@@ -59,7 +59,13 @@ final class GaplessEngine {
     // MARK: settings
 
     func setGains(_ g: [Float]) { for (i, b) in eq.bands.enumerated() where i < g.count { b.gain = g[i] } }
-    func setRate(_ r: Float) { pitch.rate = max(0.5, min(2, r)) }
+    /// speed 0.5x to 2x. With [pitchFollows] the pitch moves with the speed like a record (2x is one octave up, 0.5x one octave down);
+    /// without it the speed changes and the pitch stays where it was. AVAudioUnitTimePitch counts pitch in cents (1200 to the octave).
+    func setRate(_ r: Float, pitchFollows: Bool = false) {
+        let rate = max(0.5, min(2, r))
+        pitch.rate = rate
+        pitch.pitch = pitchFollows ? 1200 * log2(rate) : 0
+    }
     func setVolume(_ v: Float) { engine.mainMixerNode.outputVolume = v }
     /// volume levelling: lifts or lowers the whole song by [db]
     func setLevel(_ db: Float) { eq.globalGain = max(-24, min(24, db)) }

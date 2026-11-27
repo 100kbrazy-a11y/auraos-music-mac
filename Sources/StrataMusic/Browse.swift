@@ -94,23 +94,33 @@ struct SongTable: View {
         }
     }
 
-    /// the menu for the selected songs, and double-click to play (macOS 13 and later)
+    @State private var lastDoubleClick = Date.distantPast
+
+    /// plays a song from a double-click. A cell and the table can both report the same double-click, so the second report is ignored
+    private func playFromClick(_ s: Song, _ list: [Song]) {
+        let now = Date()
+        if now.timeIntervalSince(lastDoubleClick) < 0.6 { return }
+        lastDoubleClick = now
+        player.play(s, in: list)
+    }
+
+    /// the menu for the selected songs, and double-click to play (macOS 13 and later). This covers the whole row; the cells
+    /// below cover their own area too, so no part of a row is left out.
     @ViewBuilder private func withSelectionMenu<V: View>(_ v: V, _ list: [Song]) -> some View {
         if #available(macOS 13, *) {
             v.contextMenu(forSelectionType: String.self) { ids in menu(ids, list) } primaryAction: { ids in
-                if let id = ids.first, let s = lib.byID[id] { player.play(s, in: list) }
+                if let id = ids.first, let s = lib.byID[id] { playFromClick(s, list) }
             }
         } else { v }
     }
 
-    /// macOS 12 has no menu for a whole table selection, so each row carries its own menu and double-click
+    /// every cell of a row (and the whole width of a list row) answers right-click and double-click on its whole area, not just on
+    /// the pixels of its text. The double-click is a simultaneous gesture, so clicking still selects the row.
     @ViewBuilder private func rowActions<V: View>(_ v: V, _ s: Song, _ list: [Song]) -> some View {
-        if #available(macOS 13, *) { v }
-        else {
-            v.contentShape(Rectangle())
-                .contextMenu { menu(selection.contains(s.id) ? selection : [s.id], list) }
-                .onTapGesture(count: 2) { player.play(s, in: list) }
-        }
+        v.frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .contextMenu { menu(selection.contains(s.id) ? selection : [s.id], list) }
+            .simultaneousGesture(TapGesture(count: 2).onEnded { playFromClick(s, list) })
     }
 
     @ViewBuilder private func content(_ list: [Song]) -> some View {
@@ -243,15 +253,36 @@ struct SongRows: View {
                 .background(i % 2 == 0 ? Color.white.opacity(0.03) : Color.clear)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { player.play(s, in: songs) }
-                .contextMenu {
-                    Button("Play") { player.play(s, in: songs) }
-                    Button("Play Next") { player.playNext(s) }
-                    Button("Add to Queue") { player.enqueue(s) }
-                    Button(lib.isFav(s) ? "Remove from Favorites" : "Add to Favorites") { lib.toggleFav(s) }
-                }
+                .contextMenu { SongContextMenu(song: s, list: songs, lib: lib, player: player) }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// the right-click menu for one song, for the places a song is listed outside the big songs table
+struct SongContextMenu: View {
+    let song: Song
+    let list: [Song]
+    let lib: Library
+    let player: Player
+
+    var body: some View {
+        Button("Play") { player.play(song, in: list) }
+        Button("Play Next") { player.playNext(song) }
+        Button("Add to Queue") { player.enqueue(song) }
+        Button("Start Radio") { Radio.shared.start(from: song) }
+        Divider()
+        Button(lib.isFav(song) ? "Remove from Favorites" : "Add to Favorites") { lib.toggleFav(song) }
+        Menu("Add to Playlist") {
+            ForEach(lib.playlists) { p in Button(p.name) { lib.add([song.id], to: p.id) } }
+            Divider()
+            Button("New Playlist…") { lib.newPlaylist("New Playlist", with: [song.id]) }
+        }
+        Divider()
+        Button("Go to Album") { NotificationCenter.default.post(name: .goRef, object: AlbumRef(key: song.albumKey)) }
+        Button("Go to Artist") { NotificationCenter.default.post(name: .goRef, object: ArtistRef(name: song.artistKey)) }
+        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([song.url]) }
     }
 }
 

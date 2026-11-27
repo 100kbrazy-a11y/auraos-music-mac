@@ -67,7 +67,7 @@ struct GeneralSettings: View {
                 Text("Opus files (the Android app's music packs and .opus exports) play here too. The first time one plays it is decoded once and kept, so it can take a moment. WebM files still aren't supported.").font(.callout).foregroundStyle(.secondary)
             }
         }
-        .groupedForm(clearBackground: true)
+        .groupedForm(clearBackground: true).settingsPage()
     }
 }
 
@@ -76,6 +76,7 @@ struct PlaybackSettings: View {
     @AppStorage("crossfade") private var crossfade = 0.0
     @AppStorage("eqPreset") private var preset = "Flat"
     @AppStorage("levelVolume") private var level = true
+    @AppStorage("pitchFollowsSpeed") private var pitchFollows = true
     @ObservedObject private var outputs = AudioOutputs.shared
     @State private var gains: [Double] = (UserDefaults.standard.array(forKey: "eqGains") as? [Double]) ?? Array(repeating: 0, count: 10)
     private let labels = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
@@ -89,6 +90,11 @@ struct PlaybackSettings: View {
                 }
                 .pickerStyle(.segmented)
                 Text(enhanced ? "Enhanced: gapless playback, crossfade, the equaliser and speed. It applies from the next song you start. If anything sounds wrong, switch back to Standard." : "Standard: Apple's player. Reliable. Switch to Enhanced for gapless playback, crossfade, the equaliser and speed.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Section("Speed") {
+                Toggle("Pitch follows speed", isOn: $pitchFollows)
+                Text(pitchFollows ? "Speeding a song up makes it higher and slowing it down makes it lower, like a record (2× is an octave up). Turn this off to change the speed without changing the pitch." : "The speed changes and the pitch stays the same. Turn this on to make sped-up songs higher and slowed-down songs lower.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Sound") {
@@ -116,8 +122,9 @@ struct PlaybackSettings: View {
             }
             .disabled(!enhanced)
         }
-        .groupedForm(clearBackground: true)
+        .groupedForm(clearBackground: true).settingsPage()
         .onChange(of: level) { _ in Player.shared.refreshAnalysis() }
+        .onChange(of: pitchFollows) { _ in Player.shared.applySpeedMode() }
         .onChange(of: enhanced) { _ in Player.shared.applyAudioSettings() }
         .onChange(of: crossfade) { _ in Player.shared.applyAudioSettings() }
         .onChange(of: preset) { _ in Player.shared.applyAudioSettings() }
@@ -159,7 +166,7 @@ struct DownloadSettings: View {
                 Button("Open the Downloads page") { NotificationCenter.default.post(name: .showDownloads, object: nil); NSApp.activate(ignoringOtherApps: true) }
             }
         }
-        .groupedForm(clearBackground: true)
+        .groupedForm(clearBackground: true).settingsPage()
     }
 
     private func choose() {
@@ -193,7 +200,7 @@ struct DiscordSettings: View {
                 Text("This talks to the Discord app on this Mac, the same way its own Rich Presence does: no sign-in, no token. Keep Discord open, and turn on Settings › Activity Privacy › Share my activity in Discord.")
             }
         }
-        .groupedForm(clearBackground: true)
+        .groupedForm(clearBackground: true).settingsPage()
         .onReceive(NotificationCenter.default.publisher(for: Discord.statusChanged)) { _ in status = Discord.shared.status }
         .onChange(of: on) { _ in Player.shared.refreshDiscord() }
         .onChange(of: cover) { _ in Player.shared.refreshDiscord() }
@@ -222,6 +229,6 @@ struct UpdateSettings: View {
                 Section("What's new in \(r.version)") { Text(b).font(.callout).textSelection(.enabled) }
             }
         }
-        .groupedForm(clearBackground: true)
+        .groupedForm(clearBackground: true).settingsPage()
     }
 }

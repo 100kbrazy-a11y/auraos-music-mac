@@ -8,6 +8,14 @@ struct FullPlayerView: View {
     @State private var page = UserDefaults.standard.object(forKey: "playerStart") as? Int ?? 1
     @State private var hoverClose = false
     @State private var isFull = false
+    @AppStorage("playerPages") private var pageOrder = "0,1,2"
+
+    /// a two-finger swipe moves to the next page (fingers moving left) or the one before it (fingers moving right), in the order the pill shows them
+    private func swipe(_ direction: Int) {
+        let order = PlayerPages.parse(pageOrder)
+        guard let i = order.firstIndex(of: page), order.indices.contains(i + direction) else { return }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = order[i + direction] }
+    }
 
     var body: some View {
         ZStack {
@@ -52,12 +60,70 @@ struct FullPlayerView: View {
             Button("Close", action: close).keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
         }
         .ignoresSafeArea()
+        .background(TrackpadSwipe { swipe($0) })
         .onAppear { isFull = NSApp.keyWindow?.styleMask.contains(.fullScreen) ?? false }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in isFull = true }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in isFull = false }
         .onExitCommand(perform: close)
         .onReceive(NotificationCenter.default.publisher(for: .playerPage)) { n in
             if let p = n.object as? Int { withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { page = p } }
+        }
+    }
+}
+
+/// Listens for sideways two-finger swipes on a trackpad (or a Magic Mouse) anywhere in its window and reports them once per swipe:
+/// 1 when the fingers moved left, -1 when they moved right. It never takes clicks, and it stays out of the way of vertical scrolling and
+/// of anything that scrolls sideways itself (such as the row of albums on the Artist page).
+struct TrackpadSwipe: NSViewRepresentable {
+    var onSwipe: (Int) -> Void
+
+    func makeNSView(context: Context) -> Catcher { let v = Catcher(); v.onSwipe = onSwipe; return v }
+    func updateNSView(_ v: Catcher, context: Context) { v.onSwipe = onSwipe }
+
+    final class Catcher: NSView {
+        var onSwipe: (Int) -> Void = { _ in }
+        private var monitor: Any?
+        private var sumX: CGFloat = 0
+        private var sumY: CGFloat = 0
+        private var fired = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let w = window, event.window === w, event.hasPreciseScrollingDeltas else { return }
+            if event.phase.contains(.began) || event.phase.contains(.mayBegin) { sumX = 0; sumY = 0; fired = false }
+            // the glide after the fingers lift is not a new swipe
+            guard event.momentumPhase.isEmpty else { return }
+            if overSidewaysScroller(event, in: w) { return }
+            sumX += event.scrollingDeltaX
+            sumY += event.scrollingDeltaY
+            if !fired, abs(sumX) > 60, abs(sumX) > abs(sumY) * 1.6 {
+                fired = true
+                // with natural scrolling a positive delta is fingers moving right; with it off the sign is the other way round
+                let fingersRight = event.isDirectionInvertedFromDevice ? sumX : -sumX
+                onSwipe(fingersRight < 0 ? 1 : -1)
+            }
+        }
+
+        /// true when the pointer is over something that scrolls sideways, which should keep the swipe for itself
+        private func overSidewaysScroller(_ event: NSEvent, in w: NSWindow) -> Bool {
+            guard let hit = w.contentView?.hitTest(event.locationInWindow) else { return false }
+            var v: NSView? = hit
+            while let cur = v {
+                if let sv = cur as? NSScrollView, let doc = sv.documentView, doc.frame.width > sv.contentView.bounds.width + 2 { return true }
+                v = cur.superview
+            }
+            return false
         }
     }
 }
